@@ -7,7 +7,7 @@ document.body.appendChild(renderer.domElement);
 
 // Add orbit controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
-
+//import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 // Set the initial position of the camera
 camera.position.z = 10;
 
@@ -15,6 +15,333 @@ camera.position.z = 10;
 const light = new THREE.AmbientLight(0x404040); // soft white light
 scene.add(light);
 
+
+const loader = new THREE.FontLoader();
+
+opentype.load('NotoSansSC-Regular.otf', function(err, font) {
+  if (err) {
+    console.error(err);
+    return;
+  }
+
+const char = 'A';
+const path = font.getPath(char, 0, 0, 72);
+console.log("LOG");
+console.log(path);
+  // The font object is now available and can be used to extract the outline data.
+});
+
+
+  // Load the font file
+  opentype.load('NotoSansSC-Regular.otf', function(err, font)  {
+    if (err) {
+      console.error(err);
+      return;
+    }
+
+    // Create the JSON object
+    let json = {
+      glyphs: {},
+      ascender: font.ascender,
+      descender: font.descender,
+      familyName: font.familyName,
+      styleName: font.styleName
+    };
+
+    // Iterate over the characters in the font
+    for (let i = 0; i < font.numGlyphs; i++) {
+      let glyph = font.glyphs.get(i);
+
+      // Extract the path data for the character
+      let path = glyph.getPath();
+
+      // Convert the path data into the format specified in the Three.js documentation
+      let paths = [];
+      for (let j = 0; j < path.commands.length; j++) {
+        let command = path.commands[j];
+        if (command.type === 'M') {
+          paths.push({type: 'M', x: command.x, y: command.y});
+        } else if (command.type === 'L') {
+          paths.push({type: 'L', x: command.x, y: command.y});
+        } else if (command.type === 'Q') {
+          paths.push({
+            type: 'Q',
+            x1: command.x1,
+            y1: command.y1,
+            x: command.x,
+            y: command.y
+          });
+        } else if (command.type === 'C') {
+          paths.push({
+            type: 'C',
+            x1: command.x1,
+            y1: command.y1,
+            x2: command.x2,
+            y2: command.y2,
+            x: command.x,
+            y: command.y
+          });
+        } else if (command.type === 'Z') {
+          paths.push({type: 'Z'});
+        }
+      }
+
+      // Add the extracted path data for the character to the JSON object
+      json.glyphs[glyph.unicode] = {
+        ha: glyph.advanceWidth,
+        x_min: glyph.xMin,
+        x_max: glyph.xMax,
+        o: paths
+      };
+    }
+
+    // Write the JSON object to a file
+    /* fs.writeFile(fonttest.json, JSON.stringify(json), function(err) {
+      if (err) {
+        console.error(err);
+      } else {
+        console.log('The font file has been saved');
+      }
+    }); */
+console.log(json);
+
+  });
+  
+
+console.log("Hey");
+let myObjA = new THREE.Object3D();
+myObjA.position.y = camera.position.y;
+console.log(myObjA);
+let monthGroup =  new THREE.Group();
+
+loader.load( '/helvetiker_regular.typeface.json', function ( font ) {
+
+					const color = 0xFF6699;
+
+					const matDark = new THREE.LineBasicMaterial( {
+						color: color,
+						side: THREE.DoubleSide
+					} );
+
+					const matLite = new THREE.MeshBasicMaterial( {
+						color: 0xffa500,
+						transparent: true,
+						opacity: .9,
+						side: THREE.DoubleSide
+					} );
+					
+					for (let month of months) {  
+					
+					const letterforms = font.generateShapes(month, 2.5);
+					
+
+					const textGeometry = new THREE.ShapeGeometry( letterforms );
+
+					textGeometry.computeBoundingBox();
+
+					const xMid = - 0.5 * ( textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x );
+					const yMid = - 0.5 * ( textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y );
+					const zMid = - 0.5 * ( textGeometry.boundingBox.max.z - textGeometry.boundingBox.min.z );
+
+					textGeometry.translate( xMid, yMid, zMid );
+				
+					let monthText = new THREE.Mesh( textGeometry, matLite );
+					let monthDate = new Date(calendarDates[month]);
+					if (month != 'FEB'){
+						monthDate.setDate(monthDate.getDate() + 15);
+					}
+					else{
+						monthDate.setDate(monthDate.getDate() + 13);
+					}
+					let textPosition = sunPositionOnEquator(monthDate);
+					monthText.position.set(textPosition.x, textPosition.y, textPosition.z);
+					let angle = sunAnglenOnEquator(monthDate);
+					monthText.rotateY(Math.PI/2 + angle);
+					monthText.rotateY(180 * (Math.PI/180));
+					monthText.rotateX(270 * (Math.PI/180));
+					
+					monthGroup.add(monthText); 
+					}
+		/* 		 	const holeShapes = [];
+
+					for ( let i = 0; i < shapes.length; i ++ ) {
+
+						const shape = shapes[ i ];
+
+						if ( shape.holes && shape.holes.length > 0 ) {
+
+							for ( let j = 0; j < shape.holes.length; j ++ ) {
+
+								const hole = shape.holes[ j ];
+								holeShapes.push( hole );
+
+							}
+
+						}
+
+					} 
+
+					shapes.push.apply( shapes, holeShapes );
+
+					const lineText = new THREE.Object3D();
+
+					for ( let i = 0; i < shapes.length; i ++ ) {
+
+						const shape = shapes[ i ];
+
+						const points = shape.getPoints();
+						const geometry = new THREE.BufferGeometry().setFromPoints( points );
+
+						//geometry.translate( xMid, 0, 0 );
+
+						const lineMesh = new THREE.Line( geometry, matDark );
+						lineText.add( lineMesh ); 
+
+					}*/
+});
+
+scene.add(monthGroup);
+
+const months = [
+		'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+	];
+		
+const calendarDates = {
+'JAN': 'January 1, 2023 00:00:00',
+'FEB': 'Feburary 1, 2023 00:00:00',
+'MAR': 'March 1, 2023 00:00:00',
+'APR': 'April 1, 2023 00:00:00',
+'MAY': 'May 1, 2023 00:00:00',
+'JUN': 'June 1, 2023 00:00:00',
+'JUL': 'July 1, 2023 00:00:00',
+'AUG': 'August 1, 2023 00:00:00',
+'SEP' : 'September 1, 2023 00:00:00',
+'OCT' : 'October 1, 2023 00:00:00',
+'NOV' : 'November 1, 2023 00:00:00',
+'DEC' : 'December 1, 2023 00:00:00'
+};
+
+
+
+let sunProjectionGeometry = new THREE.Geometry();
+sunProjectionGeometry.vertices.push(calcPlanetPosition('Sun', new Date(), 80));
+sunProjectionGeometry.vertices.push(calcPlanetPosition('Sun', new Date(), 80));
+let sunProjection = new THREE.Line(sunProjectionGeometry, new THREE.LineDashedMaterial({
+	color: 0xffa500,
+	linewidth: 2,
+	transparent: true,
+	opacity: 0.8,
+	dashSize: 1,
+	gapSize: 1,
+	}));
+
+function sunAnglenOnEquator(date){
+	let observer = new Astronomy.Observer(39.7, 104.9, 1609);
+	let equ_2001 = Astronomy.Equator('Sun', date, observer, false, true);
+	return equ_2001.ra * 15 * (Math.PI / 180);
+}
+
+
+function sunPositionOnEquator(date){
+	
+	let positionMatrix = new THREE.Matrix4();
+	let rotationMatrix = new THREE.Matrix4();
+	let observer = new Astronomy.Observer(39.7, 104.9, 1609);
+	let equ_2001 = Astronomy.Equator('Sun', date, observer, false, true);
+
+	positionMatrix.setPosition(77,0,0);		
+	rotationMatrix.makeRotationY(equ_2001.ra * 15 * (Math.PI / 180)); //RA has to be muliptled by 15 because it's in 24 hr format
+	positionMatrix.multiplyMatrices(rotationMatrix,positionMatrix);
+	
+	return new THREE.Vector3().setFromMatrixPosition(positionMatrix);;
+}
+
+function drawSunProjection(line, date){
+	//let point1 = calcPlanetPosition('Moon', date, 57.1);
+	let point1 = calcPlanetPosition('Sun', date, 80)
+	
+		
+	let positionMatrix = new THREE.Matrix4();
+	let rotationMatrix = new THREE.Matrix4();
+	let observer = new Astronomy.Observer(39.7, 104.9, 1609);
+	let equ_2001 = Astronomy.Equator('Sun', date, observer, false, true);
+
+	positionMatrix.setPosition(80,0,0);		
+	rotationMatrix.makeRotationY(equ_2001.ra * 15 * (Math.PI / 180)); //RA has to be muliptled by 15 because it's in 24 hr format
+	positionMatrix.multiplyMatrices(rotationMatrix,positionMatrix);
+	
+	line.geometry.vertices[0] = point1;
+	line.geometry.vertices[1] = new THREE.Vector3().setFromMatrixPosition(positionMatrix);;
+	line.computeLineDistances();
+	line.geometry.verticesNeedUpdate = true;
+}
+
+console.log(calendarDates);
+let calendarGroup = new THREE.Group();
+
+let innerCricleGeometry = new THREE.Geometry();
+let outerCricleGeometry = new THREE.Geometry();
+
+for (let month of months) {  
+	let myDate = new Date(calendarDates[month]);
+	console.log(myDate);
+	let point1 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 78);
+	let point2 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 82);
+	let monthDivGeometry = new THREE.Geometry();
+	monthDivGeometry.vertices.push(point1);
+	monthDivGeometry.vertices.push(point2);
+	
+	innerCricleGeometry.vertices.push(point1);
+	outerCricleGeometry.vertices.push(point2);
+	
+	let monthDiv = new THREE.Line(monthDivGeometry, new THREE.LineBasicMaterial({
+	color: 0xffa500,
+	transparent: true,
+	opacity: 0.8
+	}));
+	calendarGroup.add(monthDiv);
+}
+
+
+innerCricleGeometry.vertices.push(innerCricleGeometry.vertices[0]);
+outerCricleGeometry.vertices.push(outerCricleGeometry.vertices[0]);
+
+let innerCircle = new THREE.Line(innerCricleGeometry, new THREE.LineBasicMaterial({
+	color: 0xffa500,
+	transparent: true,
+	opacity: 0.8
+}));
+calendarGroup.add(innerCircle);
+	
+let outerCricle = new THREE.Line(outerCricleGeometry, new THREE.LineBasicMaterial({
+	color: 0xffa500,
+	transparent: true,
+	opacity: 0.8
+}));
+	
+calendarGroup.add(outerCricle);
+calendarGroup.rotation.x = -23.47 * (Math.PI/180);
+scene.add(calendarGroup);
+/* let angle = pointStart.angleTo(pointEnd); // get the angle between vectors
+if (clockWise) angle = angle - Math.PI * 2;  // if clockWise is true, then we'll go the longest path
+let angleDelta = angle / (smoothness - 1); // increment
+
+
+let monthDivGeometry = new THREE.Geometry();
+for (let i = 0; i < smoothness; i++) {
+geometry.vertices.push(pointStart.clone().applyAxisAngle(normal, angleDelta * i))  // this is the key operation
+}
+
+let arc = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+color: 0xffffff,
+transparent: false,
+opacity: 1.0
+}));
+
+myDate = new Date('January 1, 2023 00:00:00');
+let observer2 = new Astronomy.Observer(0, 0, 0);
+console.log(Astronomy.Equator('Sun', myDate, observer2, false, true));
+ */
 var frameDate = new Date();
 
 function render() {
@@ -31,13 +358,26 @@ function render() {
 	value.geometry.vertices.unshift(position);
 	//value.geometry.vertices.pop();
 	value.geometry.verticesNeedUpdate = true;
+	
+	drawSunProjection(sunProjection, frameDate);
+	//myText.rotate += 0.01;
 	});
 	
+	
+	myObjA.position.y = camera.position.y;
+	for (let i = 0; i < monthGroup.children.length; i++) {
+		let object = monthGroup.children[i];
+		object.lookAt(myObjA.position);
+	// Perform actions on each object
+	}
+
 	renderer.render(scene, camera);
+
 }
 
 let circleMaterial = new THREE.LineBasicMaterial({
-  color: 0x336699,
+  //color: 0x336699,
+  color: 0xFF6699,
   linewidth: 1,
   wireframe: true,
   opacity: 1,
@@ -425,7 +765,6 @@ function zodiacBelt(smoothness){
 	let angle_step = (16/ smoothness);
 	for (let i = 0; i <= smoothness; i ++ ) {
 		let angle = (-8 + i * angle_step) * (Math.PI/180);
-		console.log(angle);
 		let x = 100.1* Math.cos(angle);
 		let y = 100.1* Math.sin(angle);
 		points.push( new THREE.Vector2(x, y));
@@ -444,8 +783,8 @@ function zodiacBelt(smoothness){
 loadSphereData();
 let zodiac = zodiacBelt(12);
 scene.add(zodiac);
+scene.add(sunProjection);
 
-console.log('MOON');
 let AstroVec = Astronomy.GeoVector('Moon', new Date(), false);
 let myTest = new THREE.Vector3(AstroVec.x, AstroVec.y, AstroVec.z);
 console.log(calcPlanetPosition('Moon', new Date(), orbitalDistances['Moon']));
