@@ -114,7 +114,7 @@ myObjA.position.y = camera.position.y;
 console.log(myObjA);
 let monthGroup =  new THREE.Group();
 
-loader.load( '/celestial_sphere_files/helvetiker_regular.typeface.json', function ( font ) {
+loader.load( './celestial_sphere_files/helvetiker_regular.typeface.json', function ( font ) {
 
 					const color = 0xFF6699;
 
