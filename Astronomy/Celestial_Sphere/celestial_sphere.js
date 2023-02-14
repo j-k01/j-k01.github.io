@@ -95,26 +95,26 @@ console.log(path);
       };
     }
 
-    // Write the JSON object to a file
-    /* fs.writeFile(fonttest.json, JSON.stringify(json), function(err) {
-      if (err) {
-        console.error(err);
-      } else {
-        console.log('The font file has been saved');
-      }
-    }); */
-console.log(json);
 
   });
   
 
+
 console.log("Hey");
+console.log(Astronomy.SearchLunarEclipse(new Date()));
+let myTestEclipse = Astronomy.SearchLunarEclipse(new Date());
+console.log(myTestEclipse.peak.date);
+
+
+if (new Date() < myTestEclipse.peak.date){
+	console.log("ELSE");
+}
 let myObjA = new THREE.Object3D();
 myObjA.position.y = camera.position.y;
 console.log(myObjA);
 let monthGroup =  new THREE.Group();
 
-loader.load( './celestial_sphere_files/helvetiker_regular.typeface.json', function ( font ) {
+loader.load( '/helvetiker_regular.typeface.json', function ( font ) {
 
 					const color = 0xFF6699;
 
@@ -162,42 +162,7 @@ loader.load( './celestial_sphere_files/helvetiker_regular.typeface.json', functi
 					
 					monthGroup.add(monthText); 
 					}
-		/* 		 	const holeShapes = [];
 
-					for ( let i = 0; i < shapes.length; i ++ ) {
-
-						const shape = shapes[ i ];
-
-						if ( shape.holes && shape.holes.length > 0 ) {
-
-							for ( let j = 0; j < shape.holes.length; j ++ ) {
-
-								const hole = shape.holes[ j ];
-								holeShapes.push( hole );
-
-							}
-
-						}
-
-					} 
-
-					shapes.push.apply( shapes, holeShapes );
-
-					const lineText = new THREE.Object3D();
-
-					for ( let i = 0; i < shapes.length; i ++ ) {
-
-						const shape = shapes[ i ];
-
-						const points = shape.getPoints();
-						const geometry = new THREE.BufferGeometry().setFromPoints( points );
-
-						//geometry.translate( xMid, 0, 0 );
-
-						const lineMesh = new THREE.Line( geometry, matDark );
-						lineText.add( lineMesh ); 
-
-					}*/
 });
 
 scene.add(monthGroup);
@@ -256,7 +221,7 @@ function sunPositionOnEquator(date){
 	return new THREE.Vector3().setFromMatrixPosition(positionMatrix);;
 }
 
-function drawSunProjection(line, date){
+function drawSunProjection(line, circle, date){
 	//let point1 = calcPlanetPosition('Moon', date, 57.1);
 	let point1 = calcPlanetPosition('Sun', date, 80)
 	
@@ -270,29 +235,77 @@ function drawSunProjection(line, date){
 	rotationMatrix.makeRotationY(equ_2001.ra * 15 * (Math.PI / 180)); //RA has to be muliptled by 15 because it's in 24 hr format
 	positionMatrix.multiplyMatrices(rotationMatrix,positionMatrix);
 	
+	let positionVector = new THREE.Vector3().setFromMatrixPosition(positionMatrix);
+	circle.position.set(positionVector.x, positionVector.y, positionVector.z);
 	line.geometry.vertices[0] = point1;
-	line.geometry.vertices[1] = new THREE.Vector3().setFromMatrixPosition(positionMatrix);;
+	line.geometry.vertices[1] = positionVector;
 	line.computeLineDistances();
 	line.geometry.verticesNeedUpdate = true;
 }
 
-console.log(calendarDates);
 let calendarGroup = new THREE.Group();
 
 let innerCricleGeometry = new THREE.Geometry();
 let outerCricleGeometry = new THREE.Geometry();
 
+
+circleReferenceLineGroup = new THREE.Group();
+circleReferenceSphereGroup = new THREE.Group();
+for (let month of months) {  
+	let myDate = new Date(calendarDates[month]);
+	let referencePosition = calcPlanetPosition('Sun', new Date(calendarDates[month]), 80);
+	const referenceSphereGeo = new THREE.SphereGeometry(3, 4, 2);
+	let referenceSphere = new THREE.Mesh(referenceSphereGeo, new THREE.MeshPhongMaterial({
+		color: 0xffffff,
+		transparent: true,
+		opacity: 0.0
+	}));
+	referenceSphere.position.set(referencePosition.x, referencePosition.y, referencePosition.z);
+	circleReferenceSphereGroup.add(referenceSphere);
+	
+	let monthLineGeometry = new THREE.Geometry();
+	let start = new THREE.Vector3(referenceSphere.geometry.vertices[0].x, referenceSphere.geometry.vertices[0].y, referenceSphere.geometry.vertices[0].z);
+		start.applyMatrix4(referenceSphere.matrixWorld);
+		monthLineGeometry.vertices.push(start);
+	let stop = new THREE.Vector3(referenceSphere.geometry.vertices[5].x, referenceSphere.geometry.vertices[5].y, referenceSphere.geometry.vertices[5].z);
+		stop.applyMatrix4(referenceSphere.matrixWorld);
+	monthLineGeometry.vertices.push(start);
+	monthLineGeometry.vertices.push(stop);
+	let monthLine = new THREE.Line(monthLineGeometry, new THREE.LineBasicMaterial({
+		color: 0xffa500,
+		transparent: false,
+		opacity: 0.8
+	}));
+	innerCricleGeometry.vertices.push(start.clone());
+	outerCricleGeometry.vertices.push(stop.clone());
+	referenceSphere.matrixWorldNeedsUpdate = true;
+	referenceSphere.add(monthLine);
+}
+
+circleReferenceSphereGroup.rotation.x = -23.47 * (Math.PI/180);
+
+
+
+
 for (let month of months) {  
 	let myDate = new Date(calendarDates[month]);
 	console.log(myDate);
-	let point1 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 78);
-	let point2 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 82);
+	
+	//let point1 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 78);
+	//let point1 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 78);
+	//let point2 = calcPlanetPosition('Sun', new Date(calendarDates[month]), 82);
+	
+	let point1 = new THREE.Vector3(-2, 0, 0);
+	let point2 = new THREE.Vector3(2, 0, 0);
+	
+	
 	let monthDivGeometry = new THREE.Geometry();
 	monthDivGeometry.vertices.push(point1);
 	monthDivGeometry.vertices.push(point2);
 	
-	innerCricleGeometry.vertices.push(point1);
-	outerCricleGeometry.vertices.push(point2);
+
+	//innerCricleGeometry.vertices.push(point1);
+	//outerCricleGeometry.vertices.push(point2);
 	
 	let monthDiv = new THREE.Line(monthDivGeometry, new THREE.LineBasicMaterial({
 	color: 0xffa500,
@@ -303,23 +316,28 @@ for (let month of months) {
 }
 
 
-innerCricleGeometry.vertices.push(innerCricleGeometry.vertices[0]);
-outerCricleGeometry.vertices.push(outerCricleGeometry.vertices[0]);
+//innerCricleGeometry.vertices.push(innerCricleGeometry.vertices[0]);
+//outerCricleGeometry.vertices.push(outerCricleGeometry.vertices[0]);
 
-let innerCircle = new THREE.Line(innerCricleGeometry, new THREE.LineBasicMaterial({
+let innerCircle = new THREE.LineLoop(innerCricleGeometry, new THREE.LineBasicMaterial({
 	color: 0xffa500,
 	transparent: true,
 	opacity: 0.8
 }));
-calendarGroup.add(innerCircle);
+//circleReferenceSphereGroup.add(innerCircle);
+scene.add(innerCircle);	
 	
-let outerCricle = new THREE.Line(outerCricleGeometry, new THREE.LineBasicMaterial({
+let outerCircle = new THREE.LineLoop(outerCricleGeometry, new THREE.LineBasicMaterial({
 	color: 0xffa500,
 	transparent: true,
 	opacity: 0.8
 }));
+
+scene.add(circleReferenceSphereGroup);
+scene.add(outerCircle);
+
 	
-calendarGroup.add(outerCricle);
+//calendarGroup.add(outerCricle);
 calendarGroup.rotation.x = -23.47 * (Math.PI/180);
 scene.add(calendarGroup);
 /* let angle = pointStart.angleTo(pointEnd); // get the angle between vectors
@@ -342,12 +360,20 @@ myDate = new Date('January 1, 2023 00:00:00');
 let observer2 = new Astronomy.Observer(0, 0, 0);
 console.log(Astronomy.Equator('Sun', myDate, observer2, false, true));
  */
+ 
+var eclipseGroup = new THREE.Group();
+scene.add(eclipseGroup);
+	
 var frameDate = new Date();
-
+var next_eclipse = Astronomy.NextLunarEclipse(new Date());
+var next_solar_eclipse = Astronomy.NextGlobalSolarEclipse(new Date());
+console.log(next_eclipse);
+var increment = true;
 function render() {
 	requestAnimationFrame(render);	
-	
-	frameDate.setHours(frameDate.getHours()+1);
+	if (increment){
+		frameDate.setHours(frameDate.getHours()+1);
+	};
 	planetMap.forEach(function(value, key) {
 	let position = calcPlanetPosition(key, frameDate, orbitalDistances[key]);
 	value.position.set(position.x, position.y, position.z);
@@ -359,18 +385,46 @@ function render() {
 	//value.geometry.vertices.pop();
 	value.geometry.verticesNeedUpdate = true;
 	
-	drawSunProjection(sunProjection, frameDate);
+	drawSunProjection(sunProjection, sunShadow, frameDate);
+
+	console.log(sunShadow);
 	//myText.rotate += 0.01;
 	});
 	
-	
+	var polarAngle;
 	myObjA.position.y = camera.position.y;
+	sunShadow.lookAt(myObjA.position);
+	//innerCricleGeometry.vertices.push(referenceSphere.localToWorld(monthLineGeometry.vertices[0].clone()));
+	for (let i = 0; i < circleReferenceSphereGroup.children.length; i++) {
+		let object = circleReferenceSphereGroup.children[i];
+		//let lineObject = circleReferenceLineGroup.children[i];
+		object.lookAt(myObjA.position);
+		
+		const thisThing = object.localToWorld(object.geometry.vertices[0].clone());
+		innerCircle.geometry.vertices[i].set(thisThing.x, thisThing.y, thisThing.z);
+		const thisThing2 = object.localToWorld(object.geometry.vertices[5].clone());
+		outerCircle.geometry.vertices[i].set(thisThing2.x, thisThing2.y, thisThing2.z);
+		innerCircle.geometry.verticesNeedUpdate = true;
+		outerCircle.geometry.verticesNeedUpdate = true;
+		
+	}
 	for (let i = 0; i < monthGroup.children.length; i++) {
 		let object = monthGroup.children[i];
 		object.lookAt(myObjA.position);
 	// Perform actions on each object
 	}
 
+	//console.log(eclipseGroup);
+	if (next_eclipse.peak.date < frameDate){
+		FreezeEclipse(next_eclipse, eclipseGroup);
+		console.log("FIRE");
+	}
+	if (next_solar_eclipse.peak.date < frameDate){
+		//console.log(next_solar_eclipse);
+		//FreezeSolarEclipse(next_solar_eclipse, eclipseGroup);
+		
+		//console.log("FIRE");
+	}
 	renderer.render(scene, camera);
 
 }
@@ -384,12 +438,28 @@ let circleMaterial = new THREE.LineBasicMaterial({
   side: THREE.DoubleSide
 });
 
+//SunShadow
+
+const sunShadowMaterial = new THREE.LineDashedMaterial({ color: 0xffa500, dashSize: 1 });
+
+
+// Create a geometry for the circle
+const sunShadowGeometry = new THREE.CircleGeometry(1, 32);
+sunShadowGeometry.vertices.shift();
+
+// Create a mesh for the circle
+const sunShadow = new THREE.Line(sunShadowGeometry, sunShadowMaterial);
+sunShadow.computeLineDistances();
+
+// Add the circle to the scene
+scene.add(sunShadow);
+
 
 let sphereGroup = new THREE.Group();
 
  const circleGeometry = new THREE.CircleGeometry( 1, 32, 0, 2* Math.PI);
 	
-for (let lat = 0; lat < 2; lat++) {
+for (let lat = 0; lat < 1; lat++) {
     // create a circle for each latitude and longitude segment
     const circleGeometry = new THREE.CircleGeometry( 1, 32, 0, 2* Math.PI);
     // remove center vertex
@@ -522,6 +592,7 @@ function initializePlanetPath(body){
 	line.material.color = bodyMaterials[body].emissive;
 	return line;
 }
+
 
 function createPlanet(body, date){
 	const genGeo = new THREE.SphereGeometry(.6, 32, 32);
@@ -731,6 +802,20 @@ function createStarLines(){
 	});
 }
 
+function makeLine(position1, position2){
+	
+	let geometry = new THREE.Geometry();
+	geometry.vertices.push(position1);
+	geometry.vertices.push(position2);
+	let line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+	color: 0xffffff,
+	transparent: false,
+	opacity: 1.0
+	}));
+	return line;
+}
+
+
 //from stackoverflow
 function makeArc(pointStart, pointEnd, smoothness, clockWise) {
   // calculate a normal ( taken from Geometry().computeFaceNormals() )
@@ -779,6 +864,122 @@ function zodiacBelt(smoothness){
 	return lathe;
 
 }
+
+
+
+function FreezeEclipse(eclipse_obj, eclipseGroup){
+	let thisGroup = new THREE.Group();
+	let moonVec = Astronomy.GeoVector('Moon', eclipse_obj.peak.date, false);
+	let sunVec = Astronomy.GeoVector('Sun', eclipse_obj.peak.date, false);
+	let moonVec_reduced = new THREE.Vector3(moonVec.x, moonVec.y, moonVec.z);
+	moonVec_reduced.normalize();
+	moonVec_reduced.setLength(orbitalDistances['Moon']);
+	let sunVec_reduced = new THREE.Vector3(sunVec.x, sunVec.y, sunVec.z);
+	sunVec_reduced.normalize();
+	sunVec_reduced.setLength(orbitalDistances['Sun']);
+	
+
+	let sunGhostGeometry = new THREE.SphereGeometry(.35, 32, 32);
+	let moonGhostGeometry = new THREE.SphereGeometry(.25, 32, 32);
+	let ghostMaterial = new THREE.MeshPhongMaterial({color: 0xFF6699});
+
+    let moonGhost = new THREE.Mesh(moonGhostGeometry, ghostMaterial);
+    let sunGhost = new THREE.Mesh(sunGhostGeometry, ghostMaterial);
+	moonGhost.position.set(moonVec_reduced.x, moonVec_reduced.y, moonVec_reduced.z);
+	sunGhost.position.set(sunVec_reduced.x, sunVec_reduced.y, sunVec_reduced.z);
+	
+	let eclipseTraceGeometry = new THREE.Geometry();
+	eclipseTraceGeometry.vertices.push(moonVec_reduced);
+	eclipseTraceGeometry.vertices.push(sunVec_reduced);
+
+	let eclipseTrace = new THREE.Line(eclipseTraceGeometry, new THREE.LineBasicMaterial({
+	color: 0xFF6699,
+	transparent: true,
+	opacity: 1.0
+	}));
+	
+	Object.assign(eclipse_obj, Astronomy.NextLunarEclipse(eclipse_obj.peak.date));
+	//moonGhost.rotation.x -= Math.PI/2;
+	//sunGhost.rotation.x -= Math.PI/2;
+	//eclipseTrace.rotation.x -= Math.PI/2;
+
+	thisGroup.add(moonGhost);
+	thisGroup.add(sunGhost);
+	thisGroup.add(eclipseTrace);
+	thisGroup.rotation.x -= Math.PI/2;
+	eclipseGroup.add(thisGroup);
+}
+
+function FreezeSolarEclipse(eclipse_obj, eclipseGroup){
+	console.log(eclipse_obj);
+	console.log("DOINGTHINGS");
+	let thisGroup = new THREE.Group();
+	let moonVec = Astronomy.GeoVector('Moon', eclipse_obj.peak.time.date, false);
+	let sunVec = Astronomy.GeoVector('Sun', eclipse_obj.peak.time.date, false);
+	let moonVec_reduced = new THREE.Vector3(moonVec.x, moonVec.y, moonVec.z);
+	moonVec_reduced.normalize();
+	moonVec_reduced.setLength(orbitalDistances['Moon']);
+	let sunVec_reduced = new THREE.Vector3(sunVec.x, sunVec.y, sunVec.z);
+	sunVec_reduced.normalize();
+	sunVec_reduced.setLength(orbitalDistances['Sun']);
+	
+
+	let sunGhostGeometry = new THREE.SphereGeometry(.35, 32, 32);
+	let moonGhostGeometry = new THREE.SphereGeometry(.25, 32, 32);
+	let ghostMaterial = new THREE.MeshPhongMaterial({color: 0xFF6699});
+
+    let moonGhost = new THREE.Mesh(moonGhostGeometry, ghostMaterial);
+    let sunGhost = new THREE.Mesh(sunGhostGeometry, ghostMaterial);
+	moonGhost.position.set(moonVec_reduced.x, moonVec_reduced.y, moonVec_reduced.z);
+	sunGhost.position.set(sunVec_reduced.x, sunVec_reduced.y, sunVec_reduced.z);
+	
+	let eclipseTraceGeometry = new THREE.Geometry();
+	eclipseTraceGeometry.vertices.push(new THREE.Vector3(0,0.0));
+	eclipseTraceGeometry.vertices.push(sunVec_reduced);
+
+	let eclipseTrace = new THREE.Line(eclipseTraceGeometry, new THREE.LineBasicMaterial({
+	color: 0x006699,
+	transparent: true,
+	opacity: 1.0
+	}));
+	newSphere = createPlanet('Moon', eclipse_obj.peak.time.date);
+	
+	newSphere2 = createPlanet('Sun', eclipse_obj.peak.time.date);
+	
+	Object.assign(eclipse_obj, Astronomy.NextLocalSolarEclipse(eclipse_obj.peak.time.date, new Astronomy.Observer(0, 0, 0)));
+	//moonGhost.rotation.x -= Math.PI/2;
+	//sunGhost.rotation.x -= Math.PI/2;
+	//eclipseTrace.rotation.x -= Math.PI/2;
+	console.log("testlog");
+	console.log(newSphere);
+	scene.add(newSphere);
+	scene.add(newSphere2);
+	thisGroup.add(moonGhost);
+	thisGroup.add(sunGhost);
+	thisGroup.add(eclipseTrace);
+	thisGroup.rotation.x -= Math.PI/2;
+	eclipseGroup.add(thisGroup);
+}
+
+
+
+let thisEclipse = Astronomy.NextLocalSolarEclipse(new Date(), new Astronomy.Observer(0, 0, 0));
+for (let i = 0; i <= 2; i ++ ) {
+		if (thisEclipse.kind == 'partial'){
+			FreezeSolarEclipse(thisEclipse,eclipseGroup);
+						console.log("FOUNDONE");
+		}
+		else{
+			
+			thisEclipse = Astronomy.NextLocalSolarEclipse(thisEclipse.peak.time.date, new Astronomy.Observer(0, 0, 0));
+			//console.log("FOUNDONE");
+			//console.log(thisEclipse);
+			
+		}
+}
+ 
+
+
 
 loadSphereData();
 let zodiac = zodiacBelt(12);
