@@ -1,7 +1,8 @@
 // Scene, camera and renderer
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ alpha: true });
+renderer.setClearColor(0x000000, 1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -111,10 +112,9 @@ if (new Date() < myTestEclipse.peak.date){
 }
 let myObjA = new THREE.Object3D();
 myObjA.position.y = camera.position.y;
-console.log(myObjA);
 let monthGroup =  new THREE.Group();
 
-loader.load( '/helvetiker_regular.typeface.json', function ( font ) {
+loader.load( './celestial_sphere_files/helvetiker_regular.typeface.json', function ( font ) {
 
 					const color = 0xFF6699;
 
