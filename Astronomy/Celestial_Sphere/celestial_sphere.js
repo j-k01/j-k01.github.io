@@ -33,7 +33,7 @@ let myObjA = new THREE.Object3D();
 myObjA.position.y = camera.position.y;
 let monthGroup =  new THREE.Group();
 var loadedFont;
-loader.load( '/helvetiker_regular.typeface.json', function ( font ) {
+loader.load( './celestial_sphere_files/helvetiker_regular.typeface.json', function ( font ) {
 					loadedFont = font;
 					const color = 0xFF6699;
 
