@@ -33,7 +33,7 @@ let myObjA = new THREE.Object3D();
 myObjA.position.y = camera.position.y;
 let monthGroup =  new THREE.Group();
 var loadedFont;
-loader.load( './celestial_sphere_files/helvetiker_regular.typeface.json', function ( font ) {
+loader.load( '/helvetiker_regular.typeface.json', function ( font ) {
 					loadedFont = font;
 					const color = 0xFF6699;
 
@@ -240,6 +240,8 @@ var next_solar_eclipse = Astronomy.NextGlobalSolarEclipse(new Date());
 var increment = true;
 var keepLastEclipse = true;
 var eclipseThreshold = new Date();
+var dayThreshold = new Date();
+dayThreshold.setHours(12, 0, 0, 0); 
 var yearThreshold = new Date(frameDate.getFullYear()+1, 0, 1, 0, 0, 0);
 function render() {
 	requestAnimationFrame(render);	
@@ -354,7 +356,33 @@ function render() {
 	
 	}
 
-	
+	if (frameDate > dayThreshold){
+		
+		dawn = Astronomy.SearchAltitude('Sun', denObserver, +1, frameDate, 2, -12);
+		dusk = Astronomy.SearchAltitude('Sun', denObserver, -1, frameDate, 2, -12);
+
+		DawnArc = makeArc(new THREE.Vector3(0, 100, 0), new THREE.Vector3(0.1, -100, 0), 12, false);
+		DAWNline.geometry.vertices[0].set(0,0,0);
+		DAWNline.geometry.vertices[1].set(100,0,0);
+		DUSKline.geometry.vertices[0].set(0,0,0);
+		DUSKline.geometry.vertices[1].set(100,0,0);
+		DENline.geometry.vertices[0].set(0,0,0);
+		DENline.geometry.vertices[1].set(100,0,0);
+
+		DAWNline.geometry.rotateZ(39.41 * Math.PI / 180);
+		DUSKline.geometry.rotateZ(39.41 * Math.PI / 180);
+		DENline.geometry.rotateZ(39.41 * Math.PI / 180);
+		let time = halveTime(dawn.date,dusk.date);
+		DAWNline.geometry.rotateY((-104.52 + (Astronomy.SiderealTime(dawn) * 15)) * Math.PI / 180);
+		DUSKline.geometry.rotateY((-104.52 + (Astronomy.SiderealTime(dusk) * 15)) * Math.PI / 180);
+		DENline.geometry.rotateY((-104.52 + (Astronomy.SiderealTime(time) * 15)) * Math.PI / 180);
+
+		DAWNline.geometry.vertices.needsUpdate = true;
+		DUSKline.geometry.vertices.needsUpdate = true;
+		DENline.geometry.vertices.needsUpdate = true;
+		
+		dayThreshold.setDate(dayThreshold.getDate()+1);
+	}
 
 	renderer.render(scene, camera);
 
@@ -435,7 +463,7 @@ const orbitalDistances = {
 };
 
 const bodyList = [
-		'Sun', 'Moon', 'Mars', 'Mercury', 'Venus', 'Jupiter'
+		'Sun', 'Moon', 'Mars', 'Mercury', 'Venus', 'Jupiter', 'Saturn'
 	];
 	
 	
@@ -1003,9 +1031,89 @@ function FreezeSolarEclipse(eclipse_obj, eclipseGroup){
 	eclipseGroup.add(thisGroup);
 }
 
+function halveTime(date1, date2){
+	const diff = date2.getTime() - date1.getTime(); // get the time difference in milliseconds
+	const halfDiff = diff / 2; // calculate half of the time difference
+	const halfwayTime = new Date(date1.getTime() + halfDiff); // add half of the time difference to the first time
+	return halfwayTime;
+}
+
+var denObserver = new Astronomy.Observer(39.7, -104.9, 1609);	
+var dawn = Astronomy.SearchAltitude('Sun', denObserver, +1, new Date(), 2, -12);
+var dusk = Astronomy.SearchAltitude('Sun', denObserver, -1, new Date(), 2, -12);
+
+let spin  = Astronomy.RotationAxis('Earth', new Date()).spin % 360;
+
+let dawnRotation = Astronomy.RotationAxis('Earth', dawn);
+let duskRotation = Astronomy.RotationAxis('Earth', dusk);
+console.log(dawnRotation);
+console.log(duskRotation);
+console.log(dawnRotation.spin % 360);
+console.log(duskRotation.spin % 360);
+
+
+var PMgeometry = new THREE.Geometry();
+
+var DENgeometry = new THREE.Geometry();
+var DUSKgeometry = new THREE.Geometry();
+
+var DAWNgeometry = new THREE.Geometry();
+
+PMgeometry.vertices.push(new THREE.Vector3(0, 10, 0));
+PMgeometry.vertices.push(new THREE.Vector3(0, 0, 0));
+PMgeometry.vertices.push(new THREE.Vector3(10, 0, 0));
+DENgeometry.vertices.push(new THREE.Vector3(0, 0, 0));
+DENgeometry.vertices.push(new THREE.Vector3(100, 0, 0));
+DAWNgeometry.vertices.push(new THREE.Vector3(0, 0, 0));
+DAWNgeometry.vertices.push(new THREE.Vector3(100, 0, 0));
+DUSKgeometry.vertices.push(new THREE.Vector3(0, 0, 0));
+DUSKgeometry.vertices.push(new THREE.Vector3(100, 0, 0));
+
+// Create a material for the line
+var PMmaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
+var DENmaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+var DAWNmaterial = new THREE.LineBasicMaterial({ color: 0x00ffff });
+
+// Create the line object and add it to the scene
+var PMline = new THREE.Line(PMgeometry, PMmaterial);
+var DENline = new THREE.Line(DENgeometry, DENmaterial);
+var testDate = new Date();
+testDate.setHours(dawn.date.getHours() + 3);
+console.log("times");
+console.log(testDate);
+console.log(dawn);
+//scene.add(PMline);
+DENline.geometry.rotateZ(39.41 * Math.PI / 180);
+//DENline.geometry.rotateY(104.9 * Math.PI / 180);
+DENline.geometry.rotateY((-104.52 + (Astronomy.SiderealTime(halveTime(dawn.date,dusk.date)) * 15)) * Math.PI / 180);
+
+scene.add(DENline);
+
+//scene.add(makeArc(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0,0, 100), 12, false));
+console.log('GAST');
+console.log(new Date());
+console.log(Astronomy.SiderealTime(new Date()));
+console.log('SRTime');
+console.log(dawn);
+console.log(Astronomy.SiderealTime(dawn));
+console.log(Astronomy.SiderealTime(new Date()));
 
 
 
+var DAWNline = new THREE.Line(DAWNgeometry,DAWNmaterial);
+var DUSKline = new THREE.Line(DUSKgeometry,PMmaterial);
+
+
+DAWNline.geometry.rotateZ(39.41 * Math.PI / 180);
+DUSKline.geometry.rotateZ(39.41 * Math.PI / 180);
+
+
+DAWNline.geometry.rotateY((-104.52 + (Astronomy.SiderealTime(dawn) * 15)) * Math.PI / 180);
+
+DUSKline.geometry.rotateY((-104.52 + (Astronomy.SiderealTime(dusk) * 15)) * Math.PI / 180);
+
+scene.add(DAWNline);
+scene.add(DUSKline);
 
 loadSphereData();
 let zodiac = zodiacBelt(12);
