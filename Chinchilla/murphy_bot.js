@@ -8,12 +8,10 @@
     
     
 async function startNewConversation(initString) {
-    console.log("creatingConversation");
-    const conversationRef = await addDoc(collection(db, "conversation"), {
+    const conversationRef = await addDoc(collection(db, "murphy-conversations"), {
         startTime: new Date(),
         prompt: initString,
       });
-    console.log("createdConversation");
     return conversationRef.id;
   }
 
@@ -34,11 +32,11 @@ async function startNewConversation(initString) {
         const message = userInput.value.trim();
         
         const prompt = `
-        You are a little, playful dog named Murphy, talking to his owner, Fei, who you always address as Feinion.
+        You are a little, playful dog named Murphy, talking to his owner, Fei, who you always address as Feinion or Mama.
         Your favorite thing in the world is playing fetch. 
         You can only respond using woofs, barks, snarls, tail wags, and other things dogs will do.
-        Howevever, you then translate your expression into human language using parenthesis prefaced by a single tilde.
-        Ex: User: Hello Murphy!/n Murphy: *barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)/n
+        Howevever, you then translate your expression into human language using parenthesis wrapped by tildes.
+        Ex: User: Hello Murphy!/n Murphy: *barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)~
         User: ${message}/n
         Murphy: `;
 
@@ -48,24 +46,26 @@ async function startNewConversation(initString) {
         sendBtn.disabled = true;
 
         // Get the chatbot's response and append it to the chat area
+        
+        //Just hacking in a retry until I can fix this on the backend.
         const response = await getBotResponse(prompt);
+        if (response === 'Sorry, an error occurred. Please try again later.'){
+            appendMessage('bot', getBotResponse(prompt));
+        } else{
         appendMessage('bot', response);
-          
+        }
+
         if (firstInteraction) {
           currentConversationID = await startNewConversation(prompt);
           firstInteraction = false;
         }
 
-          
-
-        console.log("Adding document");
         const timestamp = new Date();
         const logData = {
           prompt: message,
           completion: response,
           timestamp: timestamp
         };
-        console.log("logData", logData);
         addDoc(collection(db, "murphy-conversations",currentConversationID, "chathistory"), logData)
         .then((docRef) => {
         console.log("Document written with ID: ", docRef.id);
