@@ -1,12 +1,12 @@
         
     import db from './firebaseConfig.js';
-    import { collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/9.6.9/firebase-firestore.js";
+    import { collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.9/firebase-firestore.js";
 
 
     let currentConversationID = null;
     let firstInteraction = true;
-    
-    
+    let exchangeHistory = [];
+      
 async function startNewConversation(initString) {
     const conversationRef = await addDoc(collection(db, "murphy-conversations"), {
         startTime: new Date(),
@@ -29,44 +29,56 @@ async function startNewConversation(initString) {
     // Add a click event listener to the send button to handle user messages and chatbot responses
     sendBtn.addEventListener('click', async () => {
         // Get the user's message and append it to the chat area
-        const message = userInput.value.trim();
-        
-        const prompt = `
-        You are a little, playful dog named Murphy, talking to his owner, Fei, who you always address as Feinion or Mama.
-        Your favorite thing in the world is playing fetch. You can NEVER be near other dogs, becauase you will bite and bark at them. You're allergic to chicken.
-        You can only respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).
-        Howevever, you then translate your expression and actions into human language using parenthesis wrapped by tildes.
-        Ex: User: Hello Murphy!/n Murphy: *barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)~
-        Ex: User: Let's go walk!/n Murphy: *trots boisterously beside you* ~(I love walking! I'm so happy!)~
-        User: ${message}/n
-        Murphy: `;
+        const thisTurn = {
+          userMessage: userInput.value.trim(),
+          botResponse: null
+        };
 
-        appendMessage('user', message);
+        const historyString = exchangeHistory.map(exchange => `User: ${exchange.userMessage}\nMurphy: ${exchange.botResponse}\n`).join('');
+        console.log('historyString\n', historyString);
+        const prompt = `
+        You are a little, playful dog named Murphy, talking to his owner, Fei, who you always address as Feinion or Mama.\
+        Your favorite thing in the world is playing fetch. You can NEVER be near other dogs, becauase you will bite and bark at them. You're allergic to chicken.\
+        You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).\
+        Howevever, you then translate your expression and actions into human language using parenthesis wrapped by tildes.\n
+        Ex: User: Hello Murphy!\nMurphy: *barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)~\n
+        Ex: User: Let's go walk!\nMurphy: *trots boisterously beside you* ~(I love walking! I'm so happy!)~\n
+        ${historyString}\
+        User: ${thisTurn.userMessage}\nMurphy: `;
+        const cleanPrompt = prompt.replace(/[\t ]+/g, ' '); //Remove extra whitespace, tabs, etc. keeping newlines that are specically included in the prompt.
+
+        console.log('prompt', cleanPrompt);
+        appendMessage('user', thisTurn.userMessage);
         // Clear the input field and disable the send button
         userInput.value = '';
         sendBtn.disabled = true;
 
         // Get the chatbot's response and append it to the chat area
-        
-        //Just hacking in a retry until I can fix this on the backend.
-        const response = await getBotResponse(prompt);
-        appendMessage('bot', response);
+      
+        const response = await getBotResponse(cleanPrompt);
+        thisTurn.botResponse = response;
+        appendMessage('bot', thisTurn.botResponse);
 
 
         if (firstInteraction) {
-          currentConversationID = await startNewConversation(prompt);
+          currentConversationID = await startNewConversation(cleanPrompt);
           firstInteraction = false;
+        }
+
+        exchangeHistory.push(thisTurn);
+        if (exchangeHistory.length > 4) {
+          exchangeHistory.shift();
         }
 
         const timestamp = new Date();
         const logData = {
-          prompt: message,
-          completion: response,
+          prompt: thisTurn.userMessage,
+          completion: thisTurn.botResponse,
           timestamp: timestamp
         };
         addDoc(collection(db, "murphy-conversations",currentConversationID, "chathistory"), logData)
         .then((docRef) => {
-        console.log("Document written with ID: ", docRef.id);
+        console.log("Document written with conversation ID: ", currentConversationID);
         })
         .catch((error) => {
         console.error("Error adding document: ", error);
@@ -81,14 +93,9 @@ async function startNewConversation(initString) {
 
         // Event listener for the translate switch
     translateSwitch.addEventListener("change", () => {
-        
-
-        console.log("activate!");
         document.querySelectorAll(".chat-message").forEach((messageElement) => {
-          console.log(messageElement);
           if (messageElement.dataset.translated) {
             const textElement = messageElement.querySelector(".message");
-            console.log(textElement);
             if (translateSwitch.checked) {
               // Show the translated message
               textElement.textContent = messageElement.dataset.translated;
@@ -131,9 +138,7 @@ async function startNewConversation(initString) {
         textElement.textContent = message;
 
         //store translated and original message in data attribute. This allows the translation to be toggled on and off.
-        if (sender === 'bot') {
-            console.log("adding!")
-            
+        if (sender === 'bot') {            
             messageElement.dataset.translated = message;
 
             const separatorIndex = message.indexOf('~');
