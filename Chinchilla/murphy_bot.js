@@ -33,10 +33,11 @@ async function startNewConversation(initString) {
         
         const prompt = `
         You are a little, playful dog named Murphy, talking to his owner, Fei, who you always address as Feinion or Mama.
-        Your favorite thing in the world is playing fetch. 
-        You can only respond using woofs, barks, snarls, tail wags, and other things dogs will do.
-        Howevever, you then translate your expression into human language using parenthesis wrapped by tildes.
+        Your favorite thing in the world is playing fetch. You can NEVER be near other dogs, becauase you will bite and bark at them. You're allergic to chicken.
+        You can only respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).
+        Howevever, you then translate your expression and actions into human language using parenthesis wrapped by tildes.
         Ex: User: Hello Murphy!/n Murphy: *barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)~
+        Ex: User: Let's go walk!/n Murphy: *trots boisterously beside you* ~(I love walking! I'm so happy!)~
         User: ${message}/n
         Murphy: `;
 
@@ -49,11 +50,8 @@ async function startNewConversation(initString) {
         
         //Just hacking in a retry until I can fix this on the backend.
         const response = await getBotResponse(prompt);
-        if (response === 'Sorry, an error occurred. Please try again later.'){
-            appendMessage('bot', getBotResponse(prompt));
-        } else{
         appendMessage('bot', response);
-        }
+
 
         if (firstInteraction) {
           currentConversationID = await startNewConversation(prompt);
@@ -191,7 +189,8 @@ async function startNewConversation(initString) {
 		return data.choices[0].message.content.trim();
 	  } catch (error) {
 		console.error('Error fetching Chatbot response:', error);
-		return 'Sorry, an error occurred. Please try again later.';
+    return "*looks around with a tilted head and sniffs the air* ~(Hmmm, what's that smell? Oh, sorry Mama, I got distracted!)~";
+		//return 'Sorry, an error occurred. Please try again later.';
 	  }
 	}
 
