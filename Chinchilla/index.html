@@ -3,112 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatGPT-3.5 Chatbot</title>
+    <title>MurphGPT-3</title>
     <!-- Define the CSS styles for the webpage -->
-    <style>
-        /* General styles for the body of the page */
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-        }
-        /* Style for the chatbot container */
-        .container {
-            max-width: 800px;
-            margin: 50px auto;
-            background-color: #ffffff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Style for the chatbot title */
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        /* Style for the chat area */
-        .chat-area {
-            height: 400px;
-            overflow-y: scroll;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-
-        /* Style for chat messages */
-        .chat-message {
-            margin-bottom: 10px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Style for user and bot sender labels */
-        .user, .bot {
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        /* Style for user sender label */
-        .user {
-            color: #0084ff;
-        }
-
-        /* Style for bot sender label */
-        .bot {
-            color: #f50057;
-        }
-
-        /* Style for chat message text */
-        .message {
-            margin-left: 15px;
-            font-size: 16px;
-            word-wrap: break-word;
-        }
-
-        /* Style for input area container */
-        .input-area {
-            display: flex;
-            justify-content: space-between;
-        }
-
-        /* Style for text input field */
-        input[type="text"] {
-            flex-grow: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
-        }
-
-        /* Style for send button */
-        button {
-            padding: 10px 20px;
-            background-color: #0084ff;
-            color: #ffffff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        /* Style for send button hover effect */
-        button:hover {
-            background-color: #0069d9;
-        }
-
-        /* Style for disabled send button */
-        button:disabled {
-            background-color: #b3b3b3;
-            cursor: not-allowed;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="murphy_bot.js"></script>
 </head>
 <body>
     <!-- Main container for the chatbot interface -->
     <div class="container">
-        <!-- Chatbot title -->
-        <h1>ChatGPT-3.5 Chatbot</h1>
+        <header class="header">
+            <h1>MurphGPT-3</h1>
+            <div class="switch-container">
+              <label class="switch">
+                <input type="checkbox" id="translateSwitch">
+                <span class="slider"></span>
+              </label>
+              <span class="translate-text">Translate</span>
+            </div>
+          </header>
         <!-- Chat area where user and chatbot messages are displayed -->
         <div class="chat-area" id="chatArea">
         </div>
@@ -120,99 +32,7 @@
 			<button id="sendBtn" disabled>Send</button>
 		</div>
 	</div>
-<!-- JavaScript code for handling user input and chatbot interaction -->
-<script>
-	// Get the DOM elements for the chat area, user input, and send button
-	const chatArea = document.getElementById('chatArea');
-	const userInput = document.getElementById('userInput');
-	const sendBtn = document.getElementById('sendBtn');
-    // Add an input event listener to enable/disable the send button based on user input
-    userInput.addEventListener('input', () => {
-        sendBtn.disabled = userInput.value.trim() === '';
-    });
 
-    // Add a click event listener to the send button to handle user messages and chatbot responses
-    sendBtn.addEventListener('click', async () => {
-        // Get the user's message and append it to the chat area
-        const message = userInput.value.trim();
-        appendMessage('user', message);
-        // Clear the input field and disable the send button
-        userInput.value = '';
-        sendBtn.disabled = true;
-
-        // Get the chatbot's response and append it to the chat area
-        const response = await getBotResponse(message);
-        appendMessage('bot', response);
-    });
-
-    // Function to append a message (from user or chatbot) to the chat area
-    function appendMessage(sender, message) {
-        // Create the message element and set its class
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('chat-message');
-
-        // Create the sender label element and set its class and text content
-        const senderElement = document.createElement('span');
-        senderElement.classList.add(sender === 'user' ? 'user' : 'bot');
-        senderElement.textContent = sender === 'user' ? 'You:' : 'ChatGPT-3.5:';
-
-        // Append the sender label to the message element
-        messageElement.appendChild(senderElement);
-
-        // Create the message text element and set its class and text content
-        const textElement = document.createElement('span');
-        textElement.classList.add('message');
-        textElement.textContent = message;
-
-        // Append the message text to the message element
-        messageElement.appendChild(textElement);
-
-        // Append the message element to the chat area and scroll to the bottom
-        chatArea.appendChild(messageElement);
-        chatArea.scrollTop = chatArea.scrollHeight;
-    }
-
-
-		
-	async function getBotResponse(message) {
-	  //const endpoint = 'https://api.openai.com/v1/chat/completions';
-      const endpoint = 'https://proxygpt-proj-qvxq2j0uo-j-k01.vercel.app/api/chatbot';
-
-	  const requestOptions = {
-		method: 'POST',
-		headers: {
-		  'Content-Type': 'application/json',
-		  'Authorization': `Bearer NULL`
-		},
-		body: JSON.stringify({
-		  model: 'gpt-3.5-turbo',
-		  //prompt: `User:${message}, Chatbot:`,
-		  messages: [{'role': 'user', 'content': `${message}`}]
-		  //max_tokens: 50, // Limit the response length
-		  //n: 1, // Number of responses generated
-		  //stop: null,
-		  //temperature: 0.0 // Controls the randomness of the response
-		})
-	  };
-	  console.log(requestOptions);
-	  try {
-		const response = await fetch(endpoint, requestOptions);
-		if (!response.ok) {
-		  throw new Error(`API request failed with status ${response.status}`);
-		}
-
-		const data = await response.json();
-        if (data.error) {
-            return `Sorry, I received this error: ${data.error.message}`;
-        }
-		return data.choices[0].message.content.trim();
-	  } catch (error) {
-		console.error('Error fetching Chatbot response:', error);
-		return 'Sorry, an error occurred. Please try again later.';
-	  }
-	}
-
-
-</script>
 </body>
 </html>
+

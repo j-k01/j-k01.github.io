@@ -1,0 +1,170 @@
+   /* General styles for the body of the page */
+   body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+}
+/* Style for the chatbot container */
+.container {
+    max-width: 800px;
+    margin: 50px auto;
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Style for the chatbot title */
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+/* Style for the chat area */
+.chat-area {
+    height: 400px;
+    overflow-y: scroll;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+/* Style for chat messages */
+.chat-message {
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Style for user and bot sender labels */
+.user, .bot {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* Style for user sender label */
+.user {
+    color: #0084ff;
+}
+
+/* Style for bot sender label */
+.bot {
+    color: #f50057;
+}
+
+/* Style for chat message text */
+.message {
+    margin-left: 15px;
+    font-size: 16px;
+    word-wrap: break-word;
+}
+
+/* Style for input area container */
+.input-area {
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Style for text input field */
+input[type="text"] {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-right: 10px;
+}
+
+/* Style for send button */
+button {
+    padding: 10px 20px;
+    background-color: #0084ff;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Style for send button hover effect */
+button:hover {
+    background-color: #0069d9;
+}
+
+/* Style for disabled send button */
+button:disabled {
+    background-color: #b3b3b3;
+    cursor: not-allowed;
+}
+
+/* Style for the custom toggle switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+    margin-right: 5px;
+  }
+  
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 34px;
+    z-index: 1;
+  }
+  
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+  }
+  
+  input:checked + .slider {
+    background-color: #4CAF50;
+  }
+  
+  input:checked + .slider:before {
+    transform: translateX(26px);
+  }
+  
+  input:focus + .slider {
+    box-shadow: 0 0 1px #4CAF50;
+  }
+
+  /* Style for the header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+  }
+  
+  .switch-container {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+
+/* Style for the translate text */
+  .translate-text {
+    font-family: Helvetica, sans-serif;
+    font-weight: bold;
+    font-size: 16px;
+    color: black;
+   }
