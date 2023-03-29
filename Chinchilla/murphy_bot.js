@@ -6,9 +6,35 @@
     let currentConversationID = null;
     let firstInteraction = true;
     let exchangeHistory = [];
-      
+    const databaseConversationKey = "murphy_chat_conversations"
+
+    const systemPrompt = `Act like you are a little, playful dog named Murphy, talking to his owner, Fei. Always address Fei as Feinion or Mama.\
+    You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).\
+    You can use ONLY the following spoken words: ("Woof!", "Bark!", "Wan!"). NEVER speak English. Actions are wrapped in *asterisks*.\
+    However, you then translate your expression and actions into human language. Translations are wrapped by these characters: ~( )~\
+    Make sure translations are the appropraite length, and roughly match the length of the untranslated phrase or implied action.\
+    When translated to English, your vocabulary is that of a clever, young child. You are cute, precocious, energetic and funny, in a word: a goofball.\
+    Your favorite thing in the world is playing fetch. You can NEVER be near other dogs, becauase you will bite and bark at them. Chicken gives you painful stomache aches.`.replace(/[\t ]+/g, ' '); //Remove extra whitespace, tabs, etc. keeping newlines that are specically included in the prompt.
+    //const systemPrompt = `You are a little, playful dog named Murphy, talking to his owner, Fei, always addressed as Feinion or Mama. You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down). You can use ONLY the following spoken words: ("Woof!", "Bark!", "Wan!"). NEVER form sentences. NEVER speak English. Actions are wrapped in *asterisks*. However, you then translate your expression and actions into human language using parenthesis wrapped by tildes.`;  
+    
+    const sampleExchanges = [
+      {
+        userMessage: `Hello Murphy! Remeber, your a dog and NEVER SPEAK ENGLISH!`,
+        botResponse: `*barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)~`
+      },
+      {
+        userMessage: `Let's go walk!`,
+        botResponse: `Wan! *trots boisterously beside you* ~(I love walking! I'm so happy!)~`
+      },
+      {
+        userMessage: `Speak!,`,
+        botResponse: `Woof! Woof! ~(I love you, Mama! Do you have a treat?)~`
+      }
+    ];
+    exchangeHistory = sampleExchanges;
+
 async function startNewConversation(initString) {
-    const conversationRef = await addDoc(collection(db, "murphy-conversations"), {
+    const conversationRef = await addDoc(collection(db, databaseConversationKey), {
         startTime: new Date(),
         prompt: initString,
       });
@@ -20,6 +46,8 @@ async function startNewConversation(initString) {
 	const chatArea = document.getElementById('chatArea');
 	const userInput = document.getElementById('userInput');
 	const sendBtn = document.getElementById('sendBtn');
+
+
 
     // Add an input event listener to enable/disable the send button when the user has not entered any text
     userInput.addEventListener('input', () => {
@@ -34,36 +62,29 @@ async function startNewConversation(initString) {
           botResponse: null
         };
 
-        const historyString = exchangeHistory.map(exchange => `User: ${exchange.userMessage}\nMurphy: ${exchange.botResponse}\n`).join('');
-        console.log('historyString\n', historyString);
-        const prompt = `
-        You are a little, playful dog named Murphy, talking to his owner, Fei, always address as Feinion or Mama.\
-        Your favorite thing in the world is playing fetch. You can NEVER be near other dogs, becauase you will bite and bark at them. You're allergic to chicken.\
-        You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).\
-        You can use ONLY the following spoken words: ("Woof!", "Bark!", "Wan!"). NEVER form sentences. NEVER speak English. Actions are wrapped in *asterisks*.\
-        Howevever, you then translate your expression and actions into human language using parenthesis wrapped by tildes.\n
-        Ex: User: Hello Murphy!\nMurphy: *barks excitedly while chasing his tail* ~(Hello, Feinion! Let's play!)~\n
-        Ex: User: Let's go walk!\nMurphy: Wan! *trots boisterously beside you* ~(I love walking! I'm so happy!)~\n
-        Ex: User: Speak!\nMurphy: Woof! Woof! ~(I love you, Mama! Do you have a treat?)~\n
-        ${historyString}\
-        User: ${thisTurn.userMessage}\nMurphy: `;
-        const cleanPrompt = prompt.replace(/[\t ]+/g, ' '); //Remove extra whitespace, tabs, etc. keeping newlines that are specically included in the prompt.
+        let testString = exchangeHistory.map(exchange =>
+          [{'role': 'user', 'content': exchange.userMessage},
+           {'role': 'assistant', 'content': exchange.botResponse}]
+        ).flat();
+        
+        testString.unshift({'role' : 'system', 'content' : `${systemPrompt}`});
+        testString.push({'role' : 'user', 'content' : thisTurn.userMessage});
 
-        console.log('prompt', cleanPrompt);
+
         appendMessage('user', thisTurn.userMessage);
         // Clear the input field and disable the send button
         userInput.value = '';
         sendBtn.disabled = true;
 
         // Get the chatbot's response and append it to the chat area
-      
-        const response = await getBotResponse(cleanPrompt);
+        console.log(testString);
+        const response = await getBotResponse(testString);
         thisTurn.botResponse = response;
         appendMessage('bot', thisTurn.botResponse);
 
 
         if (firstInteraction) {
-          currentConversationID = await startNewConversation(cleanPrompt);
+          currentConversationID = await startNewConversation(testString);
           firstInteraction = false;
         }
 
@@ -71,14 +92,13 @@ async function startNewConversation(initString) {
         if (exchangeHistory.length > 5) {
           exchangeHistory.shift();
         }
-
         const timestamp = new Date();
         const logData = {
           prompt: thisTurn.userMessage,
           completion: thisTurn.botResponse,
           timestamp: timestamp
         };
-        addDoc(collection(db, "murphy-conversations",currentConversationID, "chathistory"), logData)
+        addDoc(collection(db, databaseConversationKey,currentConversationID, "chathistory"), logData)
         .then((docRef) => {
         console.log("Document written with conversation ID: ", currentConversationID);
         })
@@ -164,8 +184,9 @@ async function startNewConversation(initString) {
 
 		
 	async function getBotResponse(message) {
-	  //const endpoint = 'https://api.openai.com/v1/chat/completions';
-      const endpoint = 'https://proxygpt-proj-qvxq2j0uo-j-k01.vercel.app/api/chatbot';
+      const endpoint = 'https://proxygpt-proj-agkarxlzu-j-k01.vercel.app/api/chatbot';
+   
+      console.log('message', message);
 
 	  const requestOptions = {
 		method: 'POST',
@@ -174,9 +195,9 @@ async function startNewConversation(initString) {
 		  'Authorization': `Bearer NULL`
 		},
 		body: JSON.stringify({
-		  model: 'gpt-3.5-turbo',
+		  model: 'gpt-4',
 		  //prompt: `User:${message}, Chatbot:`,
-		  messages: [{'role': 'user', 'content': `${message}`}]
+		  messages: message
 		  //max_tokens: 50, // Limit the response length
 		  //n: 1, // Number of responses generated
 		  //stop: null,
