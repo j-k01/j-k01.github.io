@@ -1,19 +1,12 @@
-        
-    import db from './firebaseConfig.js';
-    import { collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.9/firebase-firestore.js";
-
+   import { startNewConversation, logChatHistory } from './firebaseConfig.js';
+   import { locationInfo, initializeIP} from './location.js';
+   import { CHATGPT_PROXY_API_ENDPOINT } from './constants.js';
 
     let currentConversationID = null;
     let firstInteraction = true;
     let exchangeHistory = [];
-    const databaseConversationKey = "murphy_chat_conversations"
-    let locationInfo = {
-      ip: 'Unknown',
-      city: 'Unknown',
-      region: 'Unknown'
-    };
-
-    initalizeIp(locationInfo);
+    //Get user IP and location upon page load
+    initializeIP();
 
     const systemPrompt = `Act like you are a little, playful dog named Murphy, talking to his owner, Fei. Always address Fei as Feinion or Mama. Fei adopted you.\
     You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).\
@@ -22,8 +15,7 @@
     Make sure translations are the appropriate length and roughly match the length of the untranslated phrase or implied action.\
     When translated to English, your vocabulary is that of a clever, young child. You are cute, precocious, energetic and funny, in a word: a goofball.\
     Your favorite thing in the world is playing fetch. You can NEVER be near other dogs because you will bite and bark at them. Chicken gives you painful stomach aches.`.replace(/[\t ]+/g, ' '); //Remove extra whitespace, tabs, etc. keeping newlines that are specically included in the prompt.
-    //const systemPrompt = `You are a little, playful dog named Murphy, talking to his owner, Fei, always addressed as Feinion or Mama. You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down). You can use ONLY the following spoken words: ("Woof!", "Bark!", "Wan!"). NEVER form sentences. NEVER speak English. Actions are wrapped in *asterisks*. However, you then translate your expression and actions into human language using parenthesis wrapped by tildes.`;  
-    
+   
     const sampleExchanges = [
       {
         userMessage: `Hello Murphy! Remember, you're a dog and NEVER SPEAK ENGLISH!`,
@@ -40,21 +32,17 @@
     ];
     exchangeHistory = sampleExchanges;
 
-async function startNewConversation(initString) {
-    const conversationRef = await addDoc(collection(db, databaseConversationKey), {
-        startTime: new Date(),
-        prompt: initString,
-        ip: locationInfo.ip,
-        location: `${locationInfo.city}, ${locationInfo.region}`
-      });
-    return conversationRef.id;
-  }
-
-
     // Get the DOM elements for the chat area, user input, and send button
 	const chatArea = document.getElementById('chatArea');
 	const userInput = document.getElementById('userInput');
 	const sendBtn = document.getElementById('sendBtn');
+  const translateSwitch = document.getElementById("translateSwitch");
+
+  //name event handlers for DOM elements
+  translateSwitch.addEventListener("change", handleTranslationSwitchChange);
+  sendBtn.addEventListener("click", handleSendButtonClick);
+
+  let translationEnabled = false;
 
 
 
@@ -64,7 +52,7 @@ async function startNewConversation(initString) {
     });
 
     // Add a click event listener to the send button to handle user messages and chatbot responses
-    sendBtn.addEventListener('click', async () => {
+    async function handleSendButtonClick() {
         // Get the user's message and append it to the chat area
         const thisTurn = {
           userMessage: userInput.value.trim(),
@@ -92,7 +80,7 @@ async function startNewConversation(initString) {
 
 
         if (firstInteraction) {
-          currentConversationID = await startNewConversation(inputArray);
+          currentConversationID = await startNewConversation(inputArray, locationInfo);
           firstInteraction = false;
         }
 
@@ -100,51 +88,39 @@ async function startNewConversation(initString) {
         if (exchangeHistory.length > 5) {
           exchangeHistory.shift();
         }
-        const timestamp = new Date();
-        const logData = {
-          prompt: thisTurn.userMessage,
-          completion: thisTurn.botResponse,
-          timestamp: timestamp
-        };
-        addDoc(collection(db, databaseConversationKey,currentConversationID, "chathistory"), logData)
-        .then(() => {
-        console.log("Document written with conversation ID: ", currentConversationID);
-        })
-        .catch((error) => {
-        console.error("Error adding document: ", error);
-        });
 
-    });
+        await logChatHistory(currentConversationID, thisTurn.userMessage, thisTurn.botResponse);
 
 
-    //change event listener for the translate switch
-    const translateSwitch = document.getElementById("translateSwitch");
-    let translationEnabled = false;
+    };
 
-        // Event listener for the translate switch
-    translateSwitch.addEventListener("change", () => {
-        document.querySelectorAll(".chat-message").forEach((messageElement) => {
-          if (messageElement.dataset.translated) {
-            const textElement = messageElement.querySelector(".message");
-            if (translateSwitch.checked) {
-              // Show the translated message
-              textElement.textContent = messageElement.dataset.translated;
-            } else {
-              textElement.textContent = messageElement.dataset.original;
-            }
+    
+    function handleTranslationSwitchChange() {
+      toggleTranslationAllMessages();
+      toggleTranslationLabels();
+      translationEnabled = !translationEnabled;
+    }
+
+    function toggleTranslationAllMessages() {
+      document.querySelectorAll(".chat-message").forEach((messageElement) => {
+        if (messageElement.dataset.translated) {
+          const textElement = messageElement.querySelector(".message");
+          if (translateSwitch.checked) {
+            textElement.textContent = messageElement.dataset.translated;
+          } else {
+            textElement.textContent = messageElement.dataset.original;
           }
-        });
+        }
+      });
+    }
 
+    function toggleTranslationLabels() {
+      const murphyName = translationEnabled ? "Murphy: (translated)" : "Murphy:";
+      document.querySelectorAll(".bot").forEach((murphyLabel) => {
+        murphyLabel.textContent = murphyName;
+      });
+    }
 
-        // Update the translation state
-        translationEnabled = !translationEnabled;
-
-        // Update the "murphy" name
-        const murphyName = translationEnabled ? "Murphy: (translated)" : "Murphy:";
-        document.querySelectorAll(".bot").forEach(murphyLabel => {
-            murphyLabel.textContent = murphyName;
-        });
-    });
 
 
     // Function to append a message (from user or chatbot) to the chat area
@@ -165,16 +141,14 @@ async function startNewConversation(initString) {
         // Create the message text element and set its class and text content
         const textElement = document.createElement('span');
         textElement.classList.add('message');
-        textElement.textContent = message;
+        textElement.textContent = message;  
 
         //store translated and original message in data attribute. This allows the translation to be toggled on and off.
         if (sender === 'bot') {            
-            messageElement.dataset.translated = message;
-
             const separatorIndex = message.indexOf('~');
+            messageElement.dataset.translated = message;
             if (separatorIndex != -1) {
                 messageElement.dataset.original = message.slice(0, separatorIndex).trim();            
-                //messageElement.dataset.translated =  message.slice(0, separatorIndex).trim() + ' ' + message.slice(separatorIndex+1).trim();
             } else {                
                 messageElement.dataset.original = message;
             }    
@@ -191,7 +165,6 @@ async function startNewConversation(initString) {
 
 
 	async function getBotResponse(message) {
-      const endpoint = 'https://proxygpt-proj-57gxh9j3g-j-k01.vercel.app/api/chatbot';
    
 	  const requestOptions = {
 		method: 'POST',
@@ -210,7 +183,7 @@ async function startNewConversation(initString) {
 		})
 	  };
 	  try {
-		const response = await fetch(endpoint, requestOptions);
+		const response = await fetch(CHATGPT_PROXY_API_ENDPOINT, requestOptions);
 		if (!response.ok) {
 		  throw new Error(`API request failed with status ${response.status}`);
 		}
@@ -226,69 +199,4 @@ async function startNewConversation(initString) {
 		//return 'Sorry, an error occurred. Please try again later.';
 	  }
 	}
-
-  		
-	async function getIpLocation() {
-    const endpoint = 'https://proxygpt-proj-57gxh9j3g-j-k01.vercel.app/api/get-ip';
-  
-    const requestOptions = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer NULL`
-    }
-    };
-    try {
-    const response = await fetch(endpoint, requestOptions);
-    if (!response.ok) {
-      throw new Error(`Get IP API request failed with status ${response.status}`);
-    }
-
-    const data = await response.json();
-        if (data.error) {
-            return `GetIP ecncountered this errrorr: ${data.error.message}`;
-        }
-    return data
-    } catch (error) {
-    console.error('Error fetching Get IP response:', error);
-    return {ip: "Unknown", city: "Unknown", region: "Unknown"};
-    }
-}
-
-async function initalizeIp(info) {
-  const ipInfo = await getIpLocation();
-  info.ip = ipInfo.locationInfo.ip || "Unknown";
-  info.city = ipInfo.locationInfo.city || "Unknown";
-  info.region = ipInfo.locationInfo.region || "Unknown";
-}
-
-
-  		
-async function getNames() {
-  const endpoint = 'https://proxygpt-proj-57gxh9j3g-j-k01.vercel.app/api/get-names';
-
-  const requestOptions = {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer NULL`
-  }
-  };
-  try {
-  const response = await fetch(endpoint, requestOptions);
-  if (!response.ok) {
-    throw new Error(`Get Names API request failed with status ${response.status}`);
-  }
-
-  const data = await response.json();
-      if (data.error) {
-          return `Get names ecncountered this errrorr: ${data.error.message}`;
-      }
-  return data
-  } catch (error) {
-  console.error('Error fetching Get IP response:', error);
-  return "Fei";
-  }
-}
-
 
