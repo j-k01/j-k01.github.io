@@ -7,8 +7,15 @@
     let firstInteraction = true;
     let exchangeHistory = [];
     const databaseConversationKey = "murphy_chat_conversations"
+    let locationInfo = {
+      ip: 'Unknown',
+      city: 'Unknown',
+      region: 'Unknown'
+    };
 
-    const systemPrompt = `Act like you are a little, playful dog named Murphy, talking to his owner, Fei. Always address Fei as Feinion or Mama.\
+    initalizeIp(locationInfo);
+
+    const systemPrompt = `Act like you are a little, playful dog named Murphy, talking to his owner, Fei. Always address Fei as Feinion or Mama. Fei adopted you.\
     You can ONLY respond using woofs, barks, snarls, tail wags, jumping, running, rolling, and other things dogs will do. You can do the following tricks: (sit, speak, lie down).\
     You can use ONLY the following spoken words: ("Woof!", "Bark!", "Wan!"). NEVER speak English. Actions are wrapped in *asterisks*.\
     However, you then translate your expression and actions into human language. Translations are wrapped by these characters: ~( )~\
@@ -37,6 +44,8 @@ async function startNewConversation(initString) {
     const conversationRef = await addDoc(collection(db, databaseConversationKey), {
         startTime: new Date(),
         prompt: initString,
+        ip: locationInfo.ip,
+        location: `${locationInfo.city}, ${locationInfo.region}`
       });
     return conversationRef.id;
   }
@@ -62,13 +71,13 @@ async function startNewConversation(initString) {
           botResponse: null
         };
 
-        let testString = exchangeHistory.map(exchange =>
+        let inputArray = exchangeHistory.map(exchange =>
           [{'role': 'user', 'content': exchange.userMessage},
            {'role': 'assistant', 'content': exchange.botResponse}]
         ).flat();
         
-        testString.unshift({'role' : 'system', 'content' : `${systemPrompt}`});
-        testString.push({'role' : 'user', 'content' : thisTurn.userMessage});
+        inputArray.unshift({'role' : 'system', 'content' : `${systemPrompt}`});
+        inputArray.push({'role' : 'user', 'content' : thisTurn.userMessage});
 
 
         appendMessage('user', thisTurn.userMessage);
@@ -77,14 +86,13 @@ async function startNewConversation(initString) {
         sendBtn.disabled = true;
 
         // Get the chatbot's response and append it to the chat area
-        console.log(testString);
-        const response = await getBotResponse(testString);
+        const response = await getBotResponse(inputArray);
         thisTurn.botResponse = response;
         appendMessage('bot', thisTurn.botResponse);
 
 
         if (firstInteraction) {
-          currentConversationID = await startNewConversation(testString);
+          currentConversationID = await startNewConversation(inputArray);
           firstInteraction = false;
         }
 
@@ -99,7 +107,7 @@ async function startNewConversation(initString) {
           timestamp: timestamp
         };
         addDoc(collection(db, databaseConversationKey,currentConversationID, "chathistory"), logData)
-        .then((docRef) => {
+        .then(() => {
         console.log("Document written with conversation ID: ", currentConversationID);
         })
         .catch((error) => {
@@ -182,12 +190,9 @@ async function startNewConversation(initString) {
     }
 
 
-		
 	async function getBotResponse(message) {
-      const endpoint = 'https://proxygpt-proj-agkarxlzu-j-k01.vercel.app/api/chatbot';
+      const endpoint = 'https://proxygpt-proj-57gxh9j3g-j-k01.vercel.app/api/chatbot';
    
-      console.log('message', message);
-
 	  const requestOptions = {
 		method: 'POST',
 		headers: {
@@ -221,4 +226,69 @@ async function startNewConversation(initString) {
 		//return 'Sorry, an error occurred. Please try again later.';
 	  }
 	}
+
+  		
+	async function getIpLocation() {
+    const endpoint = 'https://proxygpt-proj-57gxh9j3g-j-k01.vercel.app/api/get-ip';
+  
+    const requestOptions = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer NULL`
+    }
+    };
+    try {
+    const response = await fetch(endpoint, requestOptions);
+    if (!response.ok) {
+      throw new Error(`Get IP API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+        if (data.error) {
+            return `GetIP ecncountered this errrorr: ${data.error.message}`;
+        }
+    return data
+    } catch (error) {
+    console.error('Error fetching Get IP response:', error);
+    return {ip: "Unknown", city: "Unknown", region: "Unknown"};
+    }
+}
+
+async function initalizeIp(info) {
+  const ipInfo = await getIpLocation();
+  info.ip = ipInfo.locationInfo.ip || "Unknown";
+  info.city = ipInfo.locationInfo.city || "Unknown";
+  info.region = ipInfo.locationInfo.region || "Unknown";
+}
+
+
+  		
+async function getNames() {
+  const endpoint = 'https://proxygpt-proj-57gxh9j3g-j-k01.vercel.app/api/get-names';
+
+  const requestOptions = {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer NULL`
+  }
+  };
+  try {
+  const response = await fetch(endpoint, requestOptions);
+  if (!response.ok) {
+    throw new Error(`Get Names API request failed with status ${response.status}`);
+  }
+
+  const data = await response.json();
+      if (data.error) {
+          return `Get names ecncountered this errrorr: ${data.error.message}`;
+      }
+  return data
+  } catch (error) {
+  console.error('Error fetching Get IP response:', error);
+  return "Fei";
+  }
+}
+
 
