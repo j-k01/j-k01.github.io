@@ -145,10 +145,49 @@ async function loadSphereData() {
 
 
 // Define RA (in hours) and DEC (in degrees)
-let pointsRADec = [
-    { ra: 2, dec: 10 },
-    { ra: 6, dec: 10 },
-    { ra: 6, dec: 70 },
+//let pointsRADec = [
+//    { ra: 2, dec: 10 },
+//    { ra: 6, dec: 10 },
+//    { ra: 6, dec: 70 },
+//  ];
+
+  let pointsRADec = [
+    { ra: 2, dec: 30 },
+    { ra: 4, dec: 30 },
+    { ra: 6, dec: 30 },
+    { ra: 8, dec: 30 },
+    { ra: 10, dec: 30 },
+    { ra: 12, dec: 30 },
+    { ra: 14, dec: 30 },
+    { ra: 16, dec: 30 },
+    { ra: 18, dec: 30 },
+    { ra: 20, dec: 30 },
+    { ra: 22, dec: 30 },
+    { ra: 24, dec: 30 },
+    { ra: 2, dec: 45 },
+    { ra: 4, dec: 45 },
+    { ra: 6, dec: 45 },
+    { ra: 8, dec: 45 },
+    { ra: 10, dec: 45 },
+    { ra: 12, dec: 45 },
+    { ra: 14, dec: 45 },
+    { ra: 16, dec: 45 },
+    { ra: 18, dec: 45 },
+    { ra: 20, dec: 45 },
+    { ra: 22, dec: 45 },
+    { ra: 24, dec: 45 },
+    { ra: 2, dec: 60 },
+    { ra: 4, dec: 60 },
+    { ra: 6, dec: 60 },
+    { ra: 8, dec: 60 },
+    { ra: 10, dec: 60 },
+    { ra: 12, dec: 60 },
+    { ra: 14, dec: 60 },
+    { ra: 16, dec: 60 },
+    { ra: 18, dec: 60 },
+    { ra: 20, dec: 60 },
+    { ra: 22, dec: 60 },
+    { ra: 24, dec: 60 },
   ];
   
   // Convert RA from hours to radians, and DEC from degrees to radians
@@ -156,9 +195,10 @@ let pointsRADec = [
       let raRad = THREE.MathUtils.degToRad(point.ra * 15); // 15 degrees per hour
       let decRad = THREE.MathUtils.degToRad(point.dec);
       // Convert spherical coordinates to Cartesian coordinates
-      let x = 50 * Math.cos(decRad) * Math.cos(raRad);
-      let y = 50 * Math.cos(decRad) * Math.sin(raRad);
-      let z = 50 * Math.sin(decRad);
+      let x = 100 * Math.cos(raRad)* Math.cos(decRad);
+      let y = 100 * Math.sin(decRad);
+      let z = 100 * Math.sin(raRad) * Math.cos(decRad);
+      
       return new THREE.Vector3(x, y, z);
   });
 
@@ -169,7 +209,6 @@ let material = new THREE.PointsMaterial({color: 0xff0000, size: 2.0});
 // Create point cloud and add it to the scene
 let pointCloud = new THREE.Points(geometry, material);
 scene.add(pointCloud);
-
 
 let spectral_lineMaterial = new THREE.LineBasicMaterial({
     color: 0xff0000, // a faint blue color
@@ -187,8 +226,71 @@ for(let i = 0; i < points.length; i++) {
     scene.add(line);
 }
 
+let points2 = pointsRADec.map(point => {
+    let raRad = THREE.MathUtils.degToRad(point.ra * 15); // 15 degrees per hour
+    let decRad = THREE.MathUtils.degToRad(point.dec);
+    // Convert spherical coordinates to Cartesian coordinates
+    let x = 100 * Math.cos(decRad) * Math.cos(raRad);
+    let z = 100 * Math.cos(decRad) * Math.sin(raRad);
+    let y = 100 * Math.sin(decRad);
 
 
+
+    x = (200*x)/(y+100);
+    z = (200*z)/(y+100);
+
+
+    return new THREE.Vector3(x, 100, z);
+});
+
+let geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+let material2 = new THREE.PointsMaterial({color: 0xffff00, size: 2.0});
+
+// Create point cloud and add it to the scene
+let pointCloud2 = new THREE.Points(geometry2, material2);
+scene.add(pointCloud2);
+
+function createLine(point1, point2, color = 0x00ff00) {
+    // Create a buffer geometry and set its vertices to the two points
+    let geometry = new THREE.BufferGeometry().setFromPoints([point1, point2]);
+
+    // Create a basic line material
+    let material = new THREE.LineBasicMaterial({color: color});
+
+    // Create a line
+    let line = new THREE.Line(geometry, material);
+
+    return line;
+}
+
+for(let i = 0; i < points2.length; i++) {
+    let newline = createLine(points2[i], new THREE.Vector3(0, -100, 0));
+    scene.add(newline);
+}
+
+
+
+
+
+function stereographicProjection(az, alt) {
+    // Convert angles from degrees to radians
+    console.log(az,alt);
+    let azRad = THREE.MathUtils.degToRad(az);
+    let altRad = THREE.MathUtils.degToRad(alt); // 90 - alt because altitude is the complement of the polar angle
+
+    console.log(azRad,altRad);
+    // Convert spherical coordinates to Cartesian coordinates
+    let x = 50 * Math.cos(altRad) * Math.cos(azRad);
+    let y = 50 * Math.cos(altRad) * Math.sin(azRad);
+    let z = 50 * Math.sin(altRad);
+
+    console.log(x,y,z);
+    // Perform the stereographic projection
+    let xProj = x / (2*50 - y);
+    let zProj = z / (2*50 - y);
+
+    return { x: xProj, y: radius, z: zProj };
+}
 
 
 loadSphereData();
