@@ -238,12 +238,6 @@ async function loadSphereData() {
     createStarLines2();
 }
 
-async function loadStarData() {
-    let loader = new SphereDataLoader();
-    await loader.loadSphereData();
-    let group = loader.getGroup();
-    return group;
-}
 
 // Define RA (in hours) and DEC (in degrees)
 //let pointsRADec = [
@@ -406,50 +400,11 @@ function stereographicProjection(az, alt) {
 }
 
 
-class SphereDataLoader {
-    constructor() {
-        this.group = new THREE.Group();
-    }
-
-    async loadSphereData() {
-        let response = await fetch('starcatalogue.json');
-        let starData = await response.json();
-
-        // Filter the data as per your needs
-        starData = starData.filter(entry => entry.MAG < 6.6);
-    
-        // For each entry in the starData, create an object and add it to the group
-        starData.forEach((star) => {
-            let starObject = new THREE.Object3D(); // Create a new object
-            starObject.userData = star; // Store the star data in the userData property of the object
-            this.group.add(starObject); // Add the object to the group
-        });
-
-        // Other code omitted for brevity...
-    }
-
-    getGroup() {
-        return this.group;
-    }
-}
-
-
-
 loadSphereData();
-loadStarData();
-
-let starloader = new SphereDataLoader();
-let group = loadStarData();
-console.log('Group ' + group);
-
-for(let i = 0; i < group.length; i++) {
-    console.log(group[i]);
-}
 
 function render() {
 	requestAnimationFrame(render);	
 	renderer.render(scene, camera);
-    console.log(group);
 }
 
 
