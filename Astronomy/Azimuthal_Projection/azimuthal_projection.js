@@ -36,11 +36,25 @@ class Star {
     }
   }
 
- //create a constanct dictonary of colors for eacb body, where keys are names.
+ //create a constanct dictonary of colors for eacb body, where keys are names and colors reflect apparent colors
     const bodyColors = {
         'Sun': 0xffff00,
+        'Mars': 0xff0000,
         'Mercury': 0x808080,
+        'Venus': 0xffffff,
+        'Jupiter': 0x0000ff,
+        'Saturn': 0xffff00,
         'Moon': 0x808080,
+    }
+
+    const bodySizes = {
+        'Sun': 5,
+        'Mercury': 2,
+        'Venus': 2,
+        'Mars': 2,
+        'Jupiter': 2,
+        'Saturn': 2,
+        'Moon': 5,
     }
 
   class Body {
@@ -54,13 +68,13 @@ class Star {
         this.projXYZ = projXYZ; 
         this.bodyObject = null;
         this.isVisible = true;
-        this.size = 5;
+        this.size = bodySizes[name];
         this.createBodyObjFromName(name, true);
       }
       //create a function that will create a body object from a body
       createBodyObjFromName(name, useHorizon = true){
         let equ_2001 = Astronomy.Equator(name, globalDate, observer, false, false);
-        this.ra = equ_2001.ra;
+        this.ra = equ_2001.ra * 15;
         this.dec = equ_2001.dec;
         let geometry = new THREE.SphereGeometry(1, 32, 32);
         let material = new THREE.MeshPhongMaterial({
@@ -73,12 +87,10 @@ class Star {
         material.transparent = true;
         material.opacity = 1.0;
         let bodyObj = new THREE.Mesh(geometry, material);
-        console.log('bodyObj created', bodyObj)
         this.bodyObject = bodyObj;
-        console.log('bodyObj created', this.bodyObj)
         if (useHorizon == true) {
             let horizon = Astronomy.Horizon(globalDate, observer, this.ra/15, this.dec);
-            this.az = horizon.azimuth;
+            this.az = horizon.azimuth + 90;
             this.alt = horizon.altitude;
             this.xyz = calcXYZ(this.az, this.alt);
         }
@@ -94,10 +106,10 @@ class Star {
       //a function that updates the az and alt of the body
         updateCoords(){   
             let equ_2001 = Astronomy.Equator(this.name, globalDate, observer, false, false);
-            this.ra = equ_2001.ra;
+            this.ra = equ_2001.ra * 15;
             this.dec = equ_2001.dec;
-            let horizon = Astronomy.Horizon(globalDate, observer, this.ra, this.dec);
-            this.az = horizon.azimuth;
+            let horizon = Astronomy.Horizon(globalDate, observer, this.ra/15, this.dec);
+            this.az = horizon.azimuth + 90;
             this.alt = horizon.altitude;
         }
         updatePosition(useHorizon = true, project = true){
@@ -157,6 +169,7 @@ const MAX_MAGNITUDE = 6.6;
 const SPHERE_RADIUS = 100;
 //globals
 
+var autoRotate = true;
 var globalDate = new Date();
 let observer = new Astronomy.Observer(39.7, -104.9, 1609); //Denver
 //let observer = new Astronomy.Observer(90, 130, 0); //NP
@@ -334,14 +347,17 @@ function createStarObjFromStar(star, useHorizon = true){
     material.emissive = new THREE.Color(interpolateColor(star.BV, colorTable));
     material.emissiveIntensity = 1.0;
     material.transparent = true;
-    //material.opacity = mapValue(star.MAG, -0, 6.6, 1.0, 0.2);;
     material.opacity = 0.0;
     let starObj = new THREE.Mesh(geometry, material);
+    star.starObject = starObj;
     if (useHorizon == true) {
         let horizon = Astronomy.Horizon(globalDate, observer, star.RA/15, star.DEC);
-        star.AZ = horizon.azimuth;
+        star.AZ = horizon.azimuth + 90;
         star.ALT = horizon.altitude;
         star.XYZ = calcXYZ(star.AZ, star.ALT);
+    }
+    else{
+        star.XYZ = calcXYZ(star.RA, star.DEC);
     }
     starObj.position.set(star.XYZ.x, star.XYZ.y, star.XYZ.z);
     let size = mapValue(star.MAG, -0, 6.6, 1.0, 0.2);
@@ -399,18 +415,6 @@ async function init() {
     await loadStarData();
     await loadStarCulture();
     crossStarsAndConstellations(starMap, starCultureMap);
-    starCultureMap.get('Cas').stars.forEach((star, index) => {
-        let starObj = createStarObj();
-        let color = new THREE.Color();
-        starObj.material.emissive = new THREE.Color(interpolateColor(star.BV, colorTable));
-        starObj.material.color = new THREE.Color(interpolateColor(star.BV, colorTable));
-        starObj.position.set(star.XYZ.x, star.XYZ.y, star.XYZ.z);
-    
-		size = mapValue(star.MAG, -2, 6.6, 1.0,0.2);
-        starObj.scale.set(size, size, size);
-
-       // scene.add(starObj);
-    });
 
     //create a ring, visible from all angles, with radius 200 centered on (0,0,100)
     let ringGeometry = new THREE.TorusGeometry(200, 1, 5, 100); 
@@ -423,26 +427,8 @@ async function init() {
     scene.add(starGroup);
     for (let [key, value] of starCultureMap.entries()) {
         value.stars.forEach((star, index) => {
-            let starObj2 = createStarObjFromStar(star);
-            //let starObj = createStarObj();
-            // let color = new THREE.Color();
-            // starObj.material.emissive = new THREE.Color(interpolateColor(star.BV, colorTable));
-            // starObj.material.color = new THREE.Color(interpolateColor(star.BV, colorTable));
-            // starObj.position.set(star.XYZ.x, star.XYZ.y, star.XYZ.z);
-            // size = mapValue(star.MAG, 0, 6.6, 0.6, 0.1);
-            // starObj.scale.set(size, size, size);
-
-            // starObj.material.transparent = true;
-            // starObj.material.opacity = mapValue(star.MAG, -0, 6.6, 1.0, 0.2);;
-
-            //star.projXYZ = projectPoint(star.XYZ, SPHERE_RADIUS);
-            star.starObject = starObj2;
-            //if (key == 'Cas') {
-    
-                starGroup.add(star.starObject);
-            
-                //
-           
+            star.starObject = createStarObjFromStar(star);
+            starGroup.add(star.starObject);           
         });
         value.starLines.forEach((line, index) => {
             let lineObj = new THREE.Line(
@@ -457,40 +443,6 @@ async function init() {
                     opacity: 0.5
                 })
             );
-            //if (key == 'Cas') {
-                //scene.add(lineObj);
-           // }
-            //scene.add(lineObj);
-        });
-        value.starLines.forEach((line, index) => {
-            let lineObj = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    starMap.get(line[0]).XYZ,
-                    starMap.get(line[1]).XYZ
-                ]),
-                new THREE.LineBasicMaterial({
-                    color: 0xffffff,
-                    linewidth: 1,
-                    transparent: true,
-                    opacity: 0.5
-                })
-            );
-            //scene.add(lineObj);
-        });
-        value.starLines.forEach((line, index) => {
-            let lineObj = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    starMap.get(line[0]).projXYZ,
-                    starMap.get(line[1]).projXYZ
-                ]),
-                new THREE.LineBasicMaterial({
-                    color: 0xffffff,
-                    linewidth: 1,
-                    transparent: true,
-                    opacity: 0.5
-                })
-            );
-            //scene.add(lineObj);
         });
     };
 };
@@ -502,7 +454,7 @@ function updateStars() {
     for (let [key, value] of starCultureMap.entries()) {
         value.stars.forEach((star, index) => {
             let horizon = Astronomy.Horizon(globalDate, observer, star.RA/15, star.DEC, 'normal');
-            star.AZ = horizon.azimuth;
+            star.AZ = horizon.azimuth + 90;
             star.ALT = horizon.altitude;
             star.XYZ = calcXYZ(star.AZ, star.ALT);
             star.projXYZ = projectPoint(star.XYZ, SPHERE_RADIUS);
@@ -566,7 +518,32 @@ function updateConstellations() {
                 positions[5] = star2.projXYZ.z;
                 line.geometry.attributes.position.needsUpdate = true;
             }
+            else if (star1.isVisible && !star2.isVisible) {
+                line.material.opacity = 0.5;
+                let tempPoint =calcCircleIntersection3d(star2.projXYZ, star1.projXYZ, SPHERE_RADIUS);
+                let positions = line.geometry.attributes.position.array;
+                positions[0] = star1.projXYZ.x;
+                positions[1] = star1.projXYZ.y;
+                positions[2] = star1.projXYZ.z;
+                positions[3] = tempPoint.x;
+                positions[4] = tempPoint.y;
+                positions[5] = tempPoint.z;
+                line.geometry.attributes.position.needsUpdate = true;
+            }
+            else if (!star1.isVisible && star2.isVisible) {
+                line.material.opacity = 0.5;
+                let tempPoint =calcCircleIntersection3d(star1.projXYZ, star2.projXYZ, SPHERE_RADIUS);
+                let positions = line.geometry.attributes.position.array;
+                positions[0] = tempPoint.x;
+                positions[1] = tempPoint.y;
+                positions[2] = tempPoint.z;
+                positions[3] = star2.projXYZ.x;
+                positions[4] = star2.projXYZ.y;
+                positions[5] = star2.projXYZ.z;
+                line.geometry.attributes.position.needsUpdate = true;
+            }
             else {
+
                 line.material.opacity = 0.0;
             }
 
@@ -587,29 +564,27 @@ function misc(){
     // Create a mesh for the circle
     const sunShadow = new THREE.LineLoop(sunShadowGeometry, sunShadowMaterial);
     // sunShadow.computeLineDistances();
-    sunShadow.rotation.x = 90 * (Math.PI/180)
-    //sunShadow.rotation.x += 23.26 * (Math.PI/180)
-    // // Add the circle to the scene
-    // //iterate through the verticies of sunshadow, projecting each one onto the plane   
+    
+    sunShadow.rotation.x = 90 * (Math.PI/180)    // sunShadow.updateMatrix();  // updates the matrix of the object
+    
+    
     sunShadow.updateMatrix();  // updates the matrix of the object
     sunShadow.geometry.applyMatrix4(sunShadow.matrix);  // applies the matrix to the vertices
 
-    // // Reset the transformation of the mesh
+    // // // Reset the transformation of the mesh
     sunShadow.position.set(0, 0, 0);
     sunShadow.rotation.set(0, 0, 0);
     sunShadow.scale.set(1, 1, 1);
     sunShadow.updateMatrix();
 
-    // sunShadow.geometry.vertices.forEach((vertex, index) => {
-      
-    //     let projXYZ = projectPoint(vertex, SPHERE_RADIUS);
-    //     //console.log(projXYZ);
-    //     sunShadow.geometry.vertices[index].set(projXYZ.x, projXYZ.y, projXYZ.z);
-    // });
+    // debugging star
+    // let specialStar = new Star(101010, 0, 0);
+    // specialStar.MAG = -2.0;
+    // createStarObjFromStar(specialStar, false);
+    // scene.add(specialStar.starObject);
+   
     //scene.add(sunShadow);
     projSunShadow = new ProjectedObject(sunShadow);
-    console.log(projSunShadow);
-    console.log(sunShadow);
 }
 
 //create a class that can hold miscellanious information about an object
@@ -637,14 +612,12 @@ class ProjectedObject {
             }
             return new THREE.Vector3(projXYZ.x, projXYZ.y, projXYZ.z);
         });
-        console.log('points', points);
         this.projObject = new THREE.LineLoop(
             //create the gemoetry from the original object by iterating through the verticies and projecting them
             //check if vertex is nan or infity  and if so, set it to 0
             new THREE.BufferGeometry().setFromPoints(points),
             this.object.material
         );  
-        console.log('geo', this.projObject.geometry);
     }
     //update all the verticies of the projected object
     updateProjObject() {
@@ -690,7 +663,6 @@ class ProjectedObject {
         this.projObject.geometry.dispose();
         this.projObject.geometry.setFromPoints(points);
         this.projObject.geometry.attributes.position.needsUpdate = true;
-        //console.log(this.projObject.geometry.attributes.position);
     }
 }
 
@@ -726,14 +698,20 @@ function createConstellationLines() {
 
 }
 
-console.log(Astronomy.Horizon(globalDate, observer, 0, 0, 'normal'));
-console.log(Astronomy.Horizon(globalDate, observer, 0, 90, 'normal'));
-
+//planets. Group these into one creation function
 let sun = new Body('Sun');
 scene.add(sun.bodyObject);
 let moon = new Body('Moon');
 scene.add(moon.bodyObject);
-console.log('sun', sun.bodyObject);
+let venus = new Body('Venus');
+scene.add(venus.bodyObject);
+let mars = new Body('Mars');
+scene.add(mars.bodyObject);
+let mercury = new Body('Mercury');
+scene.add(mercury.bodyObject);
+let jupiter = new Body('Jupiter');
+scene.add(jupiter.bodyObject);
+
 init().then(() => {
     //init();
     misc();
@@ -741,7 +719,121 @@ init().then(() => {
     render();
 });
 
+
+// debug hack
+// //drawCoords. Draws a red line from (0,0,0) to (100,0,0). a blue line from (0,0,0) to (0,100,0), and a green line from (0,0,0) to (0,0,100)
+// function drawCoords() {
+//     let xCoord = new THREE.Geometry();
+//     xCoord.vertices.push(
+//         new THREE.Vector3(0, 0, 0),
+//         new THREE.Vector3(100, 0, 0)
+//     );        
+//     let xCoordLine = new THREE.Line(
+//         xCoord,
+//         new THREE.LineBasicMaterial({
+//             color: 0xff0000,
+//             linewidth: 1.0,
+//             transparent: true,
+//             opacity: 1.0
+//         })
+//     );
+//     scene.add(xCoordLine);
+
+//     let yCoord = new THREE.Geometry();
+//     yCoord.vertices.push(
+//         new THREE.Vector3(0, 0, 0),
+//         new THREE.Vector3(0, 100, 0)
+//     );        
+//     let yCoordLine = new THREE.Line(
+//         yCoord,
+//         new THREE.LineBasicMaterial({
+//             color: 0x00ff00,
+//             linewidth: 1.0,
+//             transparent: true,
+//             opacity: 1.0
+//         })
+//     );
+//     scene.add(yCoordLine);
+
+//     let zCoord = new THREE.Geometry();
+//     zCoord.vertices.push(
+//         new THREE.Vector3(0, 0, 0),
+//         new THREE.Vector3(0, 0, 100)
+//     );        
+//     let zCoordLine = new THREE.Line(
+//         zCoord,
+//         new THREE.LineBasicMaterial({
+//             color: 0x0000ff,
+//             linewidth: 1.0,
+//             transparent: true,
+//             opacity: 1.0
+//         })
+//     );
+//     scene.add(zCoordLine);
+// }
+
+
+//calculate the intersection of a line and a circle
+function calcCircleIntersection(m, b, r){
+    //x^2 + y^2 = r^2
+    //y = mx + b
+    //x^2 + (mx + b)^2 = r^2
+    //x^2 + m^2x^2 + 2mbx + b^2 = r^2
+    //(1 + m^2)x^2 + 2mbx + b^2 - r^2 = 0
+    //quadratic formula
+    //-b +- sqrt(b^2 - 4ac) / 2a
+    let a = 1 + m*m;
+    let b2 = 2*m*b;
+    let c = b*b - r*r;
+    let x1 = (-b2 + Math.sqrt(b2*b2 - 4*a*c)) / (2*a);
+    let x2 = (-b2 - Math.sqrt(b2*b2 - 4*a*c)) / (2*a);
+    let y1 = m*x1 + b;
+    let y2 = m*x2 + b;
+    return [{x: x1, y: y1}, {x: x2, y: y2}];
+}
+
+//take two vectors and a point and return the vector with the smallest distance
+function closestVector(v1, v2, p){
+    let d1 = Math.sqrt(Math.pow(v1.x - p.x, 2) + Math.pow(v1.y - p.y, 2));
+    let d2 = Math.sqrt(Math.pow(v2.x - p.x, 2) + Math.pow(v2.y - p.y, 2));
+    if(d1 < d2){
+        return v1;
+    }
+    else{
+        return v2;
+    }
+}
+
+//combine the three functions above, take two 3d vectors but use the x and z values as x and y values, retrun a vector3
+function calcCircleIntersection3d(v1, v2, r){
+    let m = (v2.z - v1.z) / (v2.x - v1.x);
+    let b = v1.z - (m * v1.x);
+    let intersections = calcCircleIntersection(m, b, 2*r);
+    let closest = closestVector(intersections[0], intersections[1], {x: v1.x, y: v1.z});
+    return new THREE.Vector3(closest.x, 100, closest.y);
+}
+
+        
+
 let counter = 0;
+window.addEventListener('keydown', function(event) {
+    // check if the key pressed was the 'd' key
+    if (event.key === 'd') {
+        // add one day to the date
+        //globalDate.setDate(globalDate.getDate() + 1);
+        globalDate.setMinutes(globalDate.getMinutes() + 1);
+    }
+    else if (event.key === 'a') {
+        //globalDate.setDate(globalDate.getDate() - 1);
+        globalDate.setMinutes(globalDate.getMinutes() - 1);
+    }
+    else if (event.key === ' ') {
+        autoRotate = !autoRotate;
+    }
+    else if (event.key === 'r') {
+        globalDate = new Date();   
+    }
+});
 
 function render() {
 
@@ -750,25 +842,21 @@ function render() {
         //useHorizon = true, project = true
         sun.updatePosition(true, true);
         moon.updatePosition(true, true);
-        //projSunShadow.object.rotation.x += 0.01;
+        venus.updatePosition(true, true);
+        mercury.updatePosition(true, true);
+        mars.updatePosition(true, true);
+        jupiter.updatePosition(true, true);
+
         projSunShadow.updateProjObject();
         
-        let sunHorizon = Astronomy.Horizon(globalDate, observer,  90/15, 90, 'normal');
-        //console.log('az/alt', sunHorizon);
-
-
-        //projSunShadow.object.rotation.y = (sunHorizon.azimuth) * (Math.PI / 180);
-        //projSunShadow.object.rotation.x = (23.27+sunHorizon.altitude) *  (Math.PI / 180);
-        // for (let [key, value] of starMap.entries()) {
-        //     let horizon = Astronomy.Horizon(globalDate, observer, value.RA, value.DEC, 'normal');
-        //     value.AZ = horizon.azimuth;
-        //     value.ALT = horizon.altitude;
-        //     starGroup.add(createStarObjFromStar(value));
-        // }
-        // add 1 hour to the global date
-        globalDate.setMinutes(globalDate.getMinutes() + 1)
-        //globalDate.setDate(globalDate.getDate() + 1)
-        //globalDate.setHours(globalDate.getHours() + 1)
+        let horizonSun = Astronomy.Horizon(globalDate, observer, 270/15, (90-23.4), 'normal');  
+        //Dunno why the 90s are here. Maybe because the ecliptic line   is rotated 90 degrees in the x axis
+        projSunShadow.object.rotation.z = (90 - horizonSun.altitude) * (Math.PI/180)    
+        projSunShadow.object.rotation.y = (horizonSun.azimuth-90) * (Math.PI/180)
+    
+        if (autoRotate) {
+            globalDate.setMinutes(globalDate.getMinutes() + 1)
+        }
         requestAnimationFrame(render);	
         renderer.render(scene, camera);
         }
