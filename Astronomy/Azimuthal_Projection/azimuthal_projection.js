@@ -9,7 +9,7 @@ document.body.appendChild(renderer.domElement);
 // Add orbit controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 camera.position.z = 0;
-camera.position.y = 525;
+camera.position.y = 550;
 camera.position.x = 0;
 
 //rotate the camera 90 degress counterclockwise
@@ -179,12 +179,27 @@ let starCultureMap = new Map();
 let starGroup = new THREE.Group();
 //untility functions
 
-
+//create a flat disk that changes color with time and represents the sky background
+function createSkyDisk(){
+    let geometry = new THREE.CircleGeometry(SPHERE_RADIUS*2, 100);
+    let material = new THREE.MeshBasicMaterial({
+        color: 0x75bffe,
+        side: THREE.DoubleSide
+    });
+    let disk = new THREE.Mesh(geometry, material);
+    disk.rotation.x = Math.PI / 2;
+    disk.position.set(0, 0, 0);
+    return disk;
+}
+let skyDisk = createSkyDisk();
+skyDisk.position.set(0,99,0);
+scene.add(skyDisk);
 
 function mapValue(value, inputMin, inputMax, outputMin, outputMax) {
     return outputMin + (outputMax - outputMin) * ((value - inputMin) / (inputMax - inputMin));
 }
 
+//75bffe
 const tableString = `
 O5(V)   155 176 255  #9bb0ff       -0.32 blue
 O6(V)   162 184 255  #a2b8ff
@@ -246,6 +261,90 @@ M5(V)   255 204 111  #ffcc6f
 M6(V)   255 195 112  #ffc370
 M8(V)   255 198 109  #ffc66d       2.00
 `;
+
+
+
+const skyTable = `
+-12     #000000
+-6      #4f1b74
+0       #9b6fa7
+6       #ffa7a7
+12      #ffbe9c 
+28      #75bffe //light blue 
+90      #8ae5ff //dark blue
+168     #75bffe //light blue
+169     #ffe769 //yellow
+180     #ffa7a7 //peach
+186     #9b6fa7 //purple
+192     #4f1b74
+198     #000000 
+`;
+
+//convert hex to rgp
+function hexToRgb(hex) {
+    const r = parseInt(hex.substring(1, 3), 16);
+    const g = parseInt(hex.substring(3, 5), 16);
+    const b = parseInt(hex.substring(5, 7), 16);
+    return { r, g, b };
+}
+    
+function parseSkyTable(tableString) {
+    const lines = tableString.trim().split('\n');
+    const colorTable = lines.map(line => {
+        const parts = line.trim().split(/\s+/);
+        return {
+            alt: parseFloat(parts[0]),
+            color: hexToRgb(parts[1])
+        };
+    });
+    return colorTable;
+}
+
+function interpolateSkyColor(alt, colorTable) {
+    // Filter out rows without a B-V value
+    // Sort the table by B-V value
+    
+   // const colorTable = colorTable.filter(row => row.alt !== null);
+    console.log('colorTable', colorTable);
+    colorTable.sort((a, b) => a.alt - b.alt);
+    if(alt < colorTable[0].alt){
+        alt = colorTable[0].alt;}
+    else if(alt > colorTable[colorTable.length-1].alt){
+        alt = colorTable[colorTable.length-1].alt;
+    }
+    console.log('colorTable', colorTable[0].alt);
+    console.log('first alt', alt);
+    // Find the two closest B-V values
+    let low = colorTable[0], high = colorTable[1];
+    for (let i = 1; i < colorTable.length - 1; i++) {
+        if (colorTable[i].alt <= alt && colorTable[i + 1].alt >= alt) {
+            low = colorTable[i];
+            high = colorTable[i + 1];
+            break;
+        }
+    }
+
+    console.log(low, high);
+    const interpolate = (lowColor, highColor) => {
+        return Math.round(lowColor + (alt - low.alt) * ((highColor - lowColor) / (high.alt - low.alt)));
+    }
+    const r = interpolate(low.color.r, high.color.r);
+    const g = interpolate(low.color.g, high.color.g);
+    const b = interpolate(low.color.b, high.color.b);
+
+    console.log(r, g, b);
+    // Convert r, g, b to hex and return
+    const toHex = (c) => {
+        const hex = c.toString(16);
+        return hex.length == 1 ? "0" + hex : hex;
+    }
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+}
+
+
+
+
+
 function parseTable(tableString) {
     const lines = tableString.trim().split('\n');
     const colorTable = lines.map(line => {
@@ -263,6 +362,8 @@ function parseTable(tableString) {
 }
 
 const colorTable = parseTable(tableString);
+const skyColorTable = parseSkyTable(skyTable);
+console.log(interpolateSkyColor(-10, skyColorTable));
 
 
 function interpolateColor(BV, colorTable) {
@@ -919,6 +1020,8 @@ function render() {
         mars.updatePosition(true, true);
         jupiter.updatePosition(true, true);
         projSunShadow.updateProjObject();
+
+        skyDisk.material.color = new THREE.Color(interpolateSkyColor(sun.alt, skyColorTable));
         
         let horizonSun = Astronomy.Horizon(globalDate, observer, 270/15, (90-23.4), 'normal');  
         //Dunno why the 90s are here. Maybe because the ecliptic line   is rotated 90 degrees in the x axis
