@@ -9,7 +9,7 @@ document.body.appendChild(renderer.domElement);
 // Add orbit controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 camera.position.z = 0;
-camera.position.y = 450;
+camera.position.y = 525;
 camera.position.x = 0;
 
 //rotate the camera 90 degress counterclockwise
@@ -82,6 +82,7 @@ class Star {
             shininess: 100,
             specular: 0xffffff
         });
+        modifyMaterialShader(material);
         material.emissive = new THREE.Color(bodyColors[name]);
         material.emissiveIntensity = 1.0;
         material.transparent = true;
@@ -551,10 +552,59 @@ function updateConstellations() {
     }
 }
 
+// let shaderMaterial = new THREE.ShaderMaterial({
+//     vertexShader: `
+//     varying vec4 vWorldPosition;
+//     varying vec4 vWorldCameraPosition;
+
+//         void main() {
+//             vWorldPosition = modelMatrix * vec4(position, 1.0);
+//             vWorldCameraPosition = modelViewMatrix * vec4(position, 1.0);
+//             gl_Position = projectionMatrix * vWorldCameraPosition ;
+//         }
+//     `,
+//     fragmentShader: `
+//     varying vec4 vWorldPosition;
+
+//     void main() {
+//         if (sqrt(vWorldPosition.x * vWorldPosition.x + vWorldPosition.z * vWorldPosition.z) > 200.0) discard;
+//         gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // Sets color to white. Change this to your liking.
+//     }
+//     `
+// });
+ 
+//I really just want to discard the pixel if its out of bounds without changing anything else about the material.
+//We take the custom shader material above and hack it into the existing material. 
+
+function modifyMaterialShader(material) {
+    material.onBeforeCompile = function (shader) {
+        shader.vertexShader = 'varying vec4 vWorldPosition;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            'void main() {',
+            [
+                'void main() {',
+                'vWorldPosition = modelMatrix * vec4(position, 1.0);'
+            ].join('\n')
+        );
+
+        shader.fragmentShader = 'varying vec4 vWorldPosition;\n' + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace(
+            'void main() {',
+            [
+                'void main() {',
+                'if (sqrt(vWorldPosition.x * vWorldPosition.x + vWorldPosition.z * vWorldPosition.z) > 199.0) discard;'
+            ].join('\n')
+        );
+    };
+}
+
+
 let projSunShadow;
 function misc(){    
     //create a buffer geometry using line loop and is positioned on an imagainry sphere at 23 degrees declination.
     const sunShadowMaterial = new THREE.LineDashedMaterial({ color: 0xffa500, dashSize: 1 });
+    modifyMaterialShader(sunShadowMaterial);
+
     // Create a geometry for the circle
     const sunShadowGeometry = new THREE.CircleGeometry(100, 100);
     sunShadowGeometry.vertices.shift();
@@ -697,6 +747,26 @@ function createConstellationLines() {
     };
 
 }
+let shaderMaterial = new THREE.ShaderMaterial({
+    vertexShader: `
+    varying vec4 vWorldPosition;
+    varying vec4 vWorldCameraPosition;
+
+        void main() {
+            vWorldPosition = modelMatrix * vec4(position, 1.0);
+            vWorldCameraPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * vWorldCameraPosition ;
+        }
+    `,
+    fragmentShader: `
+    varying vec4 vWorldPosition;
+
+    void main() {
+        if (sqrt(vWorldPosition.x * vWorldPosition.x + vWorldPosition.z * vWorldPosition.z) > 200.0) discard;
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // Sets color to white. Change this to your liking.
+    }
+    `
+});
 
 //planets. Group these into one creation function
 let sun = new Body('Sun');
@@ -704,6 +774,7 @@ scene.add(sun.bodyObject);
 let moon = new Body('Moon');
 scene.add(moon.bodyObject);
 let venus = new Body('Venus');
+venus.bodyObject.material = shaderMaterial;
 scene.add(venus.bodyObject);
 let mars = new Body('Mars');
 scene.add(mars.bodyObject);
@@ -835,6 +906,7 @@ window.addEventListener('keydown', function(event) {
     }
 });
 
+
 function render() {
 
         updateStars();
@@ -846,7 +918,6 @@ function render() {
         mercury.updatePosition(true, true);
         mars.updatePosition(true, true);
         jupiter.updatePosition(true, true);
-
         projSunShadow.updateProjObject();
         
         let horizonSun = Astronomy.Horizon(globalDate, observer, 270/15, (90-23.4), 'normal');  
