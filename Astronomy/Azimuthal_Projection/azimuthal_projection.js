@@ -8,31 +8,11 @@ document.body.appendChild(renderer.domElement);
 
 // Add orbit controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.touches.ONE = THREE.TOUCH.PAN;
+controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+//let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-if (isMobile) {
-    // Only enable the touch controls if on a mobile device
-    controls.enabled = false;
-
-    let element = renderer.domElement; // or another element
-
-    element.addEventListener('touchstart', function (event) {
-        if (event.touches.length === 2) {
-            // Enable OrbitControls if two fingers are touching the screen
-            controls.enabled = true;
-        } else {
-            // Disable OrbitControls if one finger is touching the screen
-            controls.enabled = false;
-            // Implement your value modification code here
-        }
-    }, false);
-
-    element.addEventListener('touchend', function (event) {
-        // Disable OrbitControls when fingers are lifted off the screen
-        controls.enabled = false;
-    }, false);
-}
 
 
 camera.position.z = 0;
