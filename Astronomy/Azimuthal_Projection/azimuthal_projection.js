@@ -170,6 +170,8 @@ const MAX_MAGNITUDE = 6.6;
 const SPHERE_RADIUS = 100;
 //globals
 
+const loader = new THREE.FontLoader();
+var loadedFont;
 var autoRotate = true;
 var globalDate = new Date();
 let observer = new Astronomy.Observer(39.7, -104.9, 1609); //Denver
@@ -267,10 +269,10 @@ M8(V)   255 198 109  #ffc66d       2.00
 const skyTable = `
 -12     #000000
 -6      #4f1b74
-0       #9b6fa7
-6       #ffa7a7
-12      #ffbe9c 
-28      #75bffe //light blue 
+-3       #9b6fa7
+0       #ffa7a7
+3      #ffbe9c 
+7       #75bffe //light blue 
 90      #8ae5ff //dark blue
 168     #75bffe //light blue
 169     #ffe769 //yellow
@@ -279,6 +281,13 @@ const skyTable = `
 192     #4f1b74
 198     #000000 
 `;
+
+const transparencyTable = `
+-12     1.0
+0       0.0
+`;
+
+
 
 //convert hex to rgp
 function hexToRgb(hex) {
@@ -301,19 +310,12 @@ function parseSkyTable(tableString) {
 }
 
 function interpolateSkyColor(alt, colorTable) {
-    // Filter out rows without a B-V value
-    // Sort the table by B-V value
-    
-   // const colorTable = colorTable.filter(row => row.alt !== null);
-    console.log('colorTable', colorTable);
     colorTable.sort((a, b) => a.alt - b.alt);
     if(alt < colorTable[0].alt){
         alt = colorTable[0].alt;}
     else if(alt > colorTable[colorTable.length-1].alt){
         alt = colorTable[colorTable.length-1].alt;
     }
-    console.log('colorTable', colorTable[0].alt);
-    console.log('first alt', alt);
     // Find the two closest B-V values
     let low = colorTable[0], high = colorTable[1];
     for (let i = 1; i < colorTable.length - 1; i++) {
@@ -324,7 +326,6 @@ function interpolateSkyColor(alt, colorTable) {
         }
     }
 
-    console.log(low, high);
     const interpolate = (lowColor, highColor) => {
         return Math.round(lowColor + (alt - low.alt) * ((highColor - lowColor) / (high.alt - low.alt)));
     }
@@ -332,7 +333,6 @@ function interpolateSkyColor(alt, colorTable) {
     const g = interpolate(low.color.g, high.color.g);
     const b = interpolate(low.color.b, high.color.b);
 
-    console.log(r, g, b);
     // Convert r, g, b to hex and return
     const toHex = (c) => {
         const hex = c.toString(16);
@@ -341,6 +341,45 @@ function interpolateSkyColor(alt, colorTable) {
     return "#" + toHex(r) + toHex(g) + toHex(b);
 }
 
+//for transparency
+
+  
+function parseTransTable(tableString) {
+    const lines = tableString.trim().split('\n');
+    const table = lines.map(line => {
+        const parts = line.trim().split(/\s+/);
+        return {
+            alt: parseFloat(parts[0]),
+            value: parseFloat(parts[1])
+        };
+    });
+    return table;
+} 
+
+function interpolateTransTable(alt, table) {
+    table.sort((a, b) => a.alt - b.alt);
+    if(alt < table[0].alt){
+        alt = table[0].alt;}
+    else if(alt > table[table.length-1].alt){
+        alt = table[table.length-1].alt;
+    }
+    // Find the two closest B-V values
+    let low = table[0], high = table[1];
+    for (let i = 1; i < table.length - 1; i++) {
+        if (table[i].alt <= alt && table[i + 1].alt >= alt) {
+            low = table[i];
+            high = table[i + 1];
+            break;
+        }
+    }
+
+    //console.log(low, high);
+    const interpolate = (tableLow, tableHigh) => {
+        return tableLow + (alt - low.alt) * ((tableHigh - tableLow) / (high.alt - low.alt));
+    }
+    const t = interpolate(low.value, high.value);
+    return t;
+}
 
 
 
@@ -364,6 +403,11 @@ function parseTable(tableString) {
 const colorTable = parseTable(tableString);
 const skyColorTable = parseSkyTable(skyTable);
 console.log(interpolateSkyColor(-10, skyColorTable));
+
+
+const transTable = parseTransTable(transparencyTable);
+console.log('transparency', interpolateTransTable(-10, transTable));
+
 
 
 function interpolateColor(BV, colorTable) {
@@ -512,66 +556,126 @@ function crossStarsAndConstellations(starMap, starCultureMap) {
     });
 }
 
+function generateTime(date, font){
+	
+	const color = 0xFF6699;
+
+	const matDark = new THREE.LineBasicMaterial( {
+	color: color,
+	side: THREE.DoubleSide
+	} );
+
+	const matLite = new THREE.MeshBasicMaterial( {
+	color: 0xffa500,
+	transparent: true,
+	opacity: 1.0,
+	side: THREE.DoubleSide
+	} );
+
+    //get the time in 24 hour fromat from date object
+    const time = date.toLocaleTimeString('en-US', { hour12: false, hour: 'numeric', minute: 'numeric' });
+	const letterforms = font.generateShapes(time.toString(), 24);
+
+	const textGeometry = new THREE.ShapeGeometry( letterforms );
+
+	textGeometry.computeBoundingBox();
+
+	const xMid = - 0.5 * ( textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x );
+	const yMid = - 0.5 * ( textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y );
+	const zMid = - 0.5 * ( textGeometry.boundingBox.max.z - textGeometry.boundingBox.min.z );
+
+	textGeometry.translate( xMid, yMid, zMid );
+    textGeometry.rotateX(3* (Math.PI/2));
+
+	let yearText = new THREE.Mesh( textGeometry, matLite );
+	
+	let textPosition = new THREE.Vector3(0, 100, 230);
+	yearText.position.set(textPosition.x, textPosition.y, textPosition.z);
+
+	return yearText;
+}
+
+//mkae this function return a promise
+async function loadFont(){
+    return new Promise((resolve, reject) => {
+        loader.load('./azimuthal_projection_files/helvetiker_regular.typeface.json', function ( font ) {
+            loadedFont = font;
+            resolve(font);
+        });
+    });
+}
+
 
 async function init() {
     await loadStarData();
     await loadStarCulture();
+    await loadFont();    
     crossStarsAndConstellations(starMap, starCultureMap);
 
     //create a ring, visible from all angles, with radius 200 centered on (0,0,100)
     let ringGeometry = new THREE.TorusGeometry(200, 1, 5, 100); 
     let ringMaterial = new THREE.MeshBasicMaterial( { color: 0xb9c9ff, side: THREE.DoubleSide } );
+    // /ffc66d
+    //0xb9c9ff
     let ring = new THREE.Mesh( ringGeometry, ringMaterial );
     ring.position.set(0,100,0);
     ring.rotation.x = Math.PI / 2;
     scene.add( ring );
     
     scene.add(starGroup);
+
+    //create a set or list of all starIds in starCultureMap, then only add stars with those ids to the scece, or stars with magnitude less than 4.0
+    let starCultureIds = new Set();
     for (let [key, value] of starCultureMap.entries()) {
-        value.stars.forEach((star, index) => {
-            star.starObject = createStarObjFromStar(star);
-            starGroup.add(star.starObject);           
-        });
-        value.starLines.forEach((line, index) => {
-            let lineObj = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    starMap.get(line[0]).XYZ,
-                    starMap.get(line[1]).XYZ
-                ]),
-                new THREE.LineBasicMaterial({
-                    color: 0xffffff,
-                    linewidth: 1,
-                    transparent: true,
-                    opacity: 0.5
-                })
-            );
+        value.starIds.forEach((starId, index) => {
+            starCultureIds.add(starId);
         });
     };
+
+
+
+    //for all stars in starMap, if the star is magnitude less than 4.0 OR is in the starCultureMap, add it to the scene
+    for (let [key, value] of starMap.entries()) {
+        if(value.MAG < 5.5 || starCultureIds.has(value.ID)){
+            value.starObject = createStarObjFromStar(value);
+            starGroup.add(value.starObject);           
+        }
+    }
+
+    // for (let [key, value] of starCultureMap.entries()) {
+    //     value.stars.forEach((star, index) => {
+    //         star.starObject = createStarObjFromStar(star);
+    //         starGroup.add(star.starObject);           
+    //     });
+    // };
 };
 
 //updates star position by calcuating new AZ and ALT, and if it's below the horizon, 
 //makes the star transparent, if it is above the horizon, calucates XYZ, then projects it onto the sphere
 //then updates position of star object
 function updateStars() {
-    for (let [key, value] of starCultureMap.entries()) {
-        value.stars.forEach((star, index) => {
-            let horizon = Astronomy.Horizon(globalDate, observer, star.RA/15, star.DEC, 'normal');
-            star.AZ = horizon.azimuth + 90;
-            star.ALT = horizon.altitude;
-            star.XYZ = calcXYZ(star.AZ, star.ALT);
-            star.projXYZ = projectPoint(star.XYZ, SPHERE_RADIUS);
-            star.starObject.position.set(star.projXYZ.x, star.projXYZ.y, star.projXYZ.z);
-            
-        if (star.ALT < 0) {
-                star.starObject.material.opacity = 0.0;
-                star.isVisible = false;
-           } else {
-               
-//                star.starObject.position.set(star.projXYZ.x, star.XYZ.y, star.projXYZ.z); This is cool
-                star.isVisible = true;
-                star.starObject.material.opacity = mapValue(star.MAG, -0, 6.6, 1.0, 0.2);
-         }
-        });
+    for (let [key, value] of starMap.entries()) {
+        if (value.starObject != null) {
+                let star = value;
+                let horizon = Astronomy.Horizon(globalDate, observer, star.RA/15, star.DEC, 'normal');
+                star.AZ = horizon.azimuth + 90;
+                star.ALT = horizon.altitude;
+                star.XYZ = calcXYZ(star.AZ, star.ALT);
+                star.projXYZ = projectPoint(star.XYZ, SPHERE_RADIUS);
+                star.starObject.position.set(star.projXYZ.x, star.projXYZ.y, star.projXYZ.z);
+                
+            if (star.ALT < 0) {
+                    star.starObject.material.opacity = 0.0;
+                    star.isVisible = false;
+            } else {
+                
+    //                star.starObject.position.set(star.projXYZ.x, star.XYZ.y, star.projXYZ.z); This is cool
+                    star.isVisible = true;
+                    star.starObject.material.opacity = mapValue(star.MAG, -0, 6.6, 1.0, 0.2);
+                    //console.log(interpolateTransTable(sun.alt, transTable));
+                    star.starObject.material.opacity = star.starObject.material.opacity * interpolateTransTable(sun.alt, transTable);
+            }
+        }
     }
 }
 
@@ -602,12 +706,17 @@ function findIntersection(x1, y1, x2, y2, h, k, r) {
 //stars are stored in userdata of each line object
 function updateConstellations() {
     for (let [key, value] of starCultureMap.entries()) {
-        value.starLineObjs.forEach((line, index) => {
-           
+        value.starLineObjs.forEach((line, index) => {           
             const star1 = starMap.get(line.userData[0]);
             const star2 = starMap.get(line.userData[1]);
             if (star1.isVisible && star2.isVisible) {
-                line.material.opacity = 0.5;
+                line.material.opacity = 1.0 * (1.0 - interpolateTransTable(sun.alt, transTable));
+                line.material.color = new THREE.Color(0xffffff);
+                if (line.material.opacity < 0.5){
+                    line.material.opacity = 0.5;
+                    line.material.color = new THREE.Color(0x9bb0ff);
+                }
+                //9bb0ff
                 //use direct buffer manipulation of the buffergeometry to update the line
                 //creating new geometry and diposing of the old one is inefficient
                 //and failing to dispose of the old one causes signficant memory leaks.
@@ -884,10 +993,17 @@ scene.add(mercury.bodyObject);
 let jupiter = new Body('Jupiter');
 scene.add(jupiter.bodyObject);
 
+
+let textObject;
 init().then(() => {
     //init();
+    
     misc();
     createConstellationLines();
+    console.log(loadedFont);
+    textObject = generateTime(globalDate, loadedFont);
+    scene.add(textObject);
+    console.log(textObject);
     render();
 });
 
@@ -1020,6 +1136,14 @@ function render() {
         mars.updatePosition(true, true);
         jupiter.updatePosition(true, true);
         projSunShadow.updateProjObject();
+        //reload the textObject and update all necessary properties
+        // scene.remove(textObject);
+        // textObject.geometry.dispose();
+        // textObject.material.dispose(); 
+        // textObject = generateTime(globalDate, loadedFont); 
+        // //replace the textObject in the scene witha  new one
+
+        scene.add(textObject);
 
         skyDisk.material.color = new THREE.Color(interpolateSkyColor(sun.alt, skyColorTable));
         
