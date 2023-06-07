@@ -1,3 +1,5 @@
+import { locationInfo, initializeIP} from './location.js';
+
 // Scene, camera and renderer
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -516,7 +518,7 @@ function createStarObjFromStar(star, useHorizon = true){
 //main functions
 async function loadStarData() {
     let response = await fetch(STAR_CATALOGUE);
-    starData = await response.json();
+    let starData = await response.json();
     starData = starData.filter(entry => entry.MAG < MAX_MAGNITUDE);
     starData.forEach((entry, index) => {
         let thisStar = new Star();
@@ -532,10 +534,10 @@ async function loadStarData() {
 
 async function loadStarCulture() {    
 	let response = await fetch('starCulture.json');
-    starCulture = await response.json();
+    let starCulture = await response.json();
 	
 	response = await fetch('starCultureNames.json');
-    starCultureNames = await response.json();
+    let starCultureNames = await response.json();
 
     starCultureNames.STELLA.map(key => {
         let constellation = new Constellation(key);
@@ -573,9 +575,15 @@ function generateTime(date, font){
 	} );
 
     //get the time in 24 hour fromat from date object
-    const time = date.toLocaleTimeString('en-US', { hour12: false, hour: 'numeric', minute: 'numeric' });
-	const letterforms = font.generateShapes(time.toString(), 24);
-
+    //check if type is not a string
+    let letterforms;
+    if (typeof date !== 'string') {
+        const time = date.toLocaleTimeString('en-US', { hour12: false, hour: 'numeric', minute: 'numeric' });
+    	letterforms = font.generateShapes(time.toString(), 24);
+    }
+    else{
+    	letterforms = font.generateShapes(date, 24);    
+    }
 	const textGeometry = new THREE.ShapeGeometry( letterforms );
 
 	textGeometry.computeBoundingBox();
@@ -605,13 +613,17 @@ async function loadFont(){
     });
 }
 
-
+let locationText;
 async function init() {
     await loadStarData();
     await loadStarCulture();
     await loadFont();    
+    await initializeIP();
     crossStarsAndConstellations(starMap, starCultureMap);
 
+    locationText = generateTime(locationInfo.city, loadedFont);
+    locationText.position.set(0, 100, -230);
+    scene.add(locationText);
     //create a ring, visible from all angles, with radius 200 centered on (0,0,100)
     let ringGeometry = new THREE.TorusGeometry(200, 1, 5, 100); 
     let ringMaterial = new THREE.MeshBasicMaterial( { color: 0xb9c9ff, side: THREE.DoubleSide } );
@@ -930,7 +942,7 @@ class ProjectedObject {
 
 let projShadow;
 
-lineGroup = new THREE.Group();
+let lineGroup = new THREE.Group();
 scene.add(lineGroup);
 /* iterates thorough line segments of a constellation and creates a line object for each one, 
 then pairs it with the original line information so that the verticies can be updated later */
@@ -1004,6 +1016,7 @@ init().then(() => {
     textObject = generateTime(globalDate, loadedFont);
     scene.add(textObject);
     console.log(textObject);
+    console.log(locationInfo);
     render();
 });
 
@@ -1137,11 +1150,11 @@ function render() {
         jupiter.updatePosition(true, true);
         projSunShadow.updateProjObject();
         //reload the textObject and update all necessary properties
-        // scene.remove(textObject);
-        // textObject.geometry.dispose();
-        // textObject.material.dispose(); 
-        // textObject = generateTime(globalDate, loadedFont); 
-        // //replace the textObject in the scene witha  new one
+        scene.remove(textObject);
+        textObject.geometry.dispose();
+        textObject.material.dispose(); 
+        textObject = generateTime(globalDate, loadedFont); 
+        //replace the textObject in the scene witha  new one
 
         scene.add(textObject);
 
