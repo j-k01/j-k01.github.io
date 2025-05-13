@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Three.js Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: monospace; /* Apply monospace to all body text */
+        }
+        #debug {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            z-index: 1000;
+        }
+        #controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            transform: none;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: monospace; /* Ensure all buttons use monospace */
+        }
+        #captureButton {
+            background-color: black;
+            color: white;
+            border: 1px solid white;
+            border-radius: 0; /* Makes corners rigid */
+            padding: 8px 16px; /* Keep padding consistent */
+        }
+
+        /* Style for range input sliders */
+        input[type="range"] {
+            -webkit-appearance: none; /* Override default look */
+            appearance: none;
+            width: 150px; /* Adjust width as needed */
+            height: 8px; /* Track height */
+            background: black; /* Track background */
+            border: 1px solid white; /* Track border */
+            border-radius: 0; /* Rigid track */
+            cursor: pointer;
+            margin-left: 10px; /* Spacing */
+        }
+
+        /* Style for the slider thumb (handle) - WebKit */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px; /* Thumb width */
+            height: 16px; /* Thumb height */
+            background: white; /* Thumb color */
+            border: 1px solid black; /* Optional: border for thumb */
+            border-radius: 0; /* Rigid thumb */
+            cursor: pointer;
+        }
+
+        /* Style for the slider thumb (handle) - Firefox */
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: white;
+            border: 1px solid black;
+            border-radius: 0;
+            cursor: pointer;
+        }
+
+        /* Style for the slider track - Firefox */
+        input[type="range"]::-moz-range-track {
+            width: 100%;
+            height: 8px;
+            background: black;
+            border: 1px solid white;
+            border-radius: 0;
+            cursor: pointer;
+        }
+
+        /* Style for the select dropdown */
+        #sampleSelect {
+            background-color: black;
+            color: white;
+            border: 1px solid white;
+            border-radius: 0;
+            padding: 6px 30px 6px 10px;
+            height: 32px; /* Explicitly set height */
+            font-family: monospace;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 10px 10px;
+            box-sizing: border-box; /* Add this to include padding in height calculation */
+        }
+
+        /* Style for options (limited browser support) */
+        #sampleSelect option {
+            background-color: black;
+            color: white;
+            font-family: monospace;
+        }
+
+        /* Ensure specific styling for play/pause buttons */
+        #playBtn,
+        #pauseBtn,
+        #cameraInfoBtn {
+            background-color: black;
+            color: white;
+            border: 1px solid white;
+            border-radius: 0;
+            font-family: monospace;
+            padding: 0; /* Remove padding */
+            margin-left: 5px;
+            width: 32px; /* Make square */
+            height: 32px; /* Match dropdown height */
+            min-width: unset; /* Remove min-width */
+            text-align: center;
+            line-height: 32px; /* Center the text/symbol vertically */
+            box-sizing: border-box; /* Include border in size calculation */
+        }
+
+        /* Optional: hover/active states */
+        #playBtn:hover,
+        #pauseBtn:hover,
+        #cameraInfoBtn:hover,
+        #captureButton:hover {
+             background-color: #333; /* Slightly lighter black on hover */
+        }
+
+        #playBtn:disabled,
+        #pauseBtn:disabled {
+            background-color: #222; /* Darker background when disabled */
+            color: #666; /* Greyed out text */
+            border-color: #444; /* Dimmer border */
+            cursor: not-allowed;
+        }
+    </style>
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <!-- Debug display -->
+    <div id="debug">Initializing...</div>
+    
+    <!-- Controls -->
+    <div id="controls">
+        <select id="sampleSelect">
+            <option value="">Loading tracks...</option>
+        </select>
+        <button id="playBtn">▶</button> 
+        <button id="pauseBtn">⏸</button>
+        <button id="cameraInfoBtn">📷</button>
+    </div>
+    
+    <script type="module" src="visualization.js"></script>
+    <script type="module" src="audioManager.js"></script>
+   
+    <script>
+        // Debug helper
+        const debug = document.getElementById('debug');
+        window.addEventListener('error', function(event) {
+            debug.innerHTML += `<br>ERROR: ${event.message}`;
+        });
+        
+        // Check if Three.js loads
+        window.addEventListener('load', function() {
+            debug.innerHTML += '<br>Window loaded';
+        });
+    </script>
+</body>
+</html> 
