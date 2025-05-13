@@ -131,6 +131,8 @@ function initScene() {
 
 // Initialize Web Audio API context and analyzers
 function initAudio() {
+    if (audioContext) return; // Already initialized
+
     lastAudioTime = 0; // Reset timing tracker
     try {
         // Create audio context using browser-compatible constructor
@@ -644,6 +646,9 @@ function updateWaves() {
 
 // Handle audio playback start/resume
 function playAudio() {
+    // Ensure audio context is initialized
+    initAudio(); // Moved initAudio call here
+
     if (!audioBuffer && !(audioSource instanceof MediaStreamAudioSourceNode)) return;
 
     // Resume audio context if suspended (browser requirement for autoplay)
@@ -765,6 +770,9 @@ function pauseAudio() {
 
 // Load and prepare audio from Firebase Storage
 async function loadAndPlayFirebaseAudio(url, trackName = 'Firebase Track') {
+    // Ensure audio context is initialized
+    initAudio(); // Moved initAudio call here
+
     if (!audioContext) {
         log('AudioContext not initialized!');
         return;
@@ -869,6 +877,9 @@ async function loadAndPlayFirebaseAudio(url, trackName = 'Firebase Track') {
 
 // Handle sample selection from dropdown menu
 async function handleSampleSelect(event) {
+    // Ensure audio context is initialized
+    initAudio(); // Moved initAudio call here
+
     const filePath = event.target.value;
     if (!filePath) {
         log('Invalid selection');
@@ -1012,8 +1023,13 @@ function updateTimeRingPosition() {
     }
 }
 
-// Capture system audio for visualization
+// Initialize and start capturing system audio for visualization
 async function captureSystemAudio() {
+    // Ensure audio context is initialized
+    initAudio(); // Moved initAudio call here
+
+    log("Attempting to capture system audio...");
+    
     try {
         // Resume audio context if suspended
         if (audioContext.state === 'suspended') {
@@ -1596,7 +1612,7 @@ function createSystemAudioNote() {
 try {
     // Initialize core components
     initScene();
-    initAudio();
+    // initAudio(); // Removed direct call from here
     createWaves();
     setupEventListeners();
     createSystemAudioNote();
