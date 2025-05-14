@@ -3,16 +3,30 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import FirebaseAudioLoader from './firebaseAudioLoader.js';
 
+// Mobile detection function
+function isMobileDevice() {
+    return (
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        (window.innerWidth <= 800 && window.innerHeight <= 900)
+    );
+}
+
+// Set global mobile flag
+const isMobile = isMobileDevice();
+
 // Debug logging utility
 const debugElement = document.getElementById('debug');
 function log(message) {
     console.log(message);
-    if (debugElement) {
+    if (debugElement && !isMobile) {
         debugElement.innerHTML += `<br>${message}`;
     }
 }
 
 log('Audio Visualizer starting');
+if (isMobile) {
+    log('Mobile device detected - simplified UI mode');
+}
 
 // Global variables for Three.js rendering
 let scene, camera, renderer, controls;
@@ -88,7 +102,7 @@ window.addEventListener('pointerdown', async function unlock () {
     // create context on the SAME call-stack as the gesture
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-    /*  iOS plays Web-Audio on the “ringer” channel, which is muted when the
+    /*  iOS plays Web-Audio on the "ringer" channel, which is muted when the
         side-switch is down.  A 1-frame silent <audio> bumps us to the
         media channel so sound is audible even in silent mode.           */
     const kick = new Audio();
@@ -1404,165 +1418,168 @@ function setupEventListeners() {
         document.body.appendChild(controlsContainer);
     }
 
-    // Create slider for time ring position adjustment
-    const timeRingSliderContainer = document.createElement('div');
-    timeRingSliderContainer.innerHTML = `
-        <label for="timeRingSlider">Time Ring Position: </label>
-        <input type="range" id="timeRingSlider" min="-50" max="100" value="${timeRingOffsetY}" step="1">
-        <span id="timeRingValue">${timeRingOffsetY}</span>
-    `;
-    controlsContainer.appendChild(timeRingSliderContainer);
+    // On mobile, only show view buttons, not configuration controls
+    if (!isMobile) {
+        // Create slider for time ring position adjustment
+        const timeRingSliderContainer = document.createElement('div');
+        timeRingSliderContainer.innerHTML = `
+            <label for="timeRingSlider">Time Ring Position: </label>
+            <input type="range" id="timeRingSlider" min="-50" max="100" value="${timeRingOffsetY}" step="1">
+            <span id="timeRingValue">${timeRingOffsetY}</span>
+        `;
+        controlsContainer.appendChild(timeRingSliderContainer);
 
-    // Create slider for FFT size adjustment
-    const fftSliderContainer = document.createElement('div');
-    fftSliderContainer.style.marginTop = '10px';
-    
-    // Use logarithmic scale for FFT size (2^9 to 2^14)
-    const fftLogSize = Math.log2(fftSize);
-    fftSliderContainer.innerHTML = `
-        <label for="fftSizeSlider">FFT Window Size: </label>
-        <input type="range" id="fftSizeSlider" min="9" max="14" value="${fftLogSize}" step="1">
-        <span id="fftSizeValue">${fftSize}</span>
-    `;
-    controlsContainer.appendChild(fftSliderContainer);
+        // Create slider for FFT size adjustment
+        const fftSliderContainer = document.createElement('div');
+        fftSliderContainer.style.marginTop = '10px';
+        
+        // Use logarithmic scale for FFT size (2^9 to 2^14)
+        const fftLogSize = Math.log2(fftSize);
+        fftSliderContainer.innerHTML = `
+            <label for="fftSizeSlider">FFT Window Size: </label>
+            <input type="range" id="fftSizeSlider" min="9" max="14" value="${fftLogSize}" step="1">
+            <span id="fftSizeValue">${fftSize}</span>
+        `;
+        controlsContainer.appendChild(fftSliderContainer);
 
-    // Create slider for spiral growth factor
-    const spiralGrowthSliderContainer = document.createElement('div');
-    spiralGrowthSliderContainer.style.marginTop = '10px';
-    spiralGrowthSliderContainer.innerHTML = `
-        <label for="spiralGrowthSlider">Spiral Growth: </label>
-        <input type="range" id="spiralGrowthSlider" min="0.0001" max="1.0" value="${spiralGrowthFactor}" step="0.0001">
-        <span id="spiralGrowthValue">${spiralGrowthFactor.toFixed(5)}</span>
-    `;
-    controlsContainer.appendChild(spiralGrowthSliderContainer);
+        // Create slider for spiral growth factor
+        const spiralGrowthSliderContainer = document.createElement('div');
+        spiralGrowthSliderContainer.style.marginTop = '10px';
+        spiralGrowthSliderContainer.innerHTML = `
+            <label for="spiralGrowthSlider">Spiral Growth: </label>
+            <input type="range" id="spiralGrowthSlider" min="0.0001" max="1.0" value="${spiralGrowthFactor}" step="0.0001">
+            <span id="spiralGrowthValue">${spiralGrowthFactor.toFixed(5)}</span>
+        `;
+        controlsContainer.appendChild(spiralGrowthSliderContainer);
 
-    // Create slider for spiral revolutions
-    const spiralRevolutionsSliderContainer = document.createElement('div');
-    spiralRevolutionsSliderContainer.style.marginTop = '10px';
-    spiralRevolutionsSliderContainer.innerHTML = `
-        <label for="spiralRevolutionsSlider">Spiral Revolutions: </label>
-        <input type="range" id="spiralRevolutionsSlider" min="1" max="40" value="${spiralRevolutions}" step="1">
-        <span id="spiralRevolutionsValue">${spiralRevolutions}</span>
-    `;
-    controlsContainer.appendChild(spiralRevolutionsSliderContainer);
+        // Create slider for spiral revolutions
+        const spiralRevolutionsSliderContainer = document.createElement('div');
+        spiralRevolutionsSliderContainer.style.marginTop = '10px';
+        spiralRevolutionsSliderContainer.innerHTML = `
+            <label for="spiralRevolutionsSlider">Spiral Revolutions: </label>
+            <input type="range" id="spiralRevolutionsSlider" min="1" max="40" value="${spiralRevolutions}" step="1">
+            <span id="spiralRevolutionsValue">${spiralRevolutions}</span>
+        `;
+        controlsContainer.appendChild(spiralRevolutionsSliderContainer);
 
-    // Create slider for audio history duration
-    const historyDurationSliderContainer = document.createElement('div');
-    historyDurationSliderContainer.style.marginTop = '10px';
-    historyDurationSliderContainer.innerHTML = `
-        <label for="historyDurationSlider">History Length (sec): </label>
-        <input type="range" id="historyDurationSlider" min="1" max="10" value="${historyDuration}" step="0.5">
-        <span id="historyDurationValue">${historyDuration.toFixed(1)}</span>
-    `;
-    controlsContainer.appendChild(historyDurationSliderContainer);
+        // Create slider for audio history duration
+        const historyDurationSliderContainer = document.createElement('div');
+        historyDurationSliderContainer.style.marginTop = '10px';
+        historyDurationSliderContainer.innerHTML = `
+            <label for="historyDurationSlider">History Length (sec): </label>
+            <input type="range" id="historyDurationSlider" min="1" max="10" value="${historyDuration}" step="0.5">
+            <span id="historyDurationValue">${historyDuration.toFixed(1)}</span>
+        `;
+        controlsContainer.appendChild(historyDurationSliderContainer);
 
-    // Create slider for sampling rate adjustment
-    const samplingSliderContainer = document.createElement('div');
-    samplingSliderContainer.style.marginTop = '10px';
-    samplingSliderContainer.innerHTML = `
-        <label for="samplingSlider">Sampling Rate (higher = smoother): </label>
-        <input type="range" id="samplingSlider" min="1" max="8" value="${samplingFactor}" step="1">
-        <span id="samplingValue">${samplingFactor}</span>
-    `;
-    controlsContainer.appendChild(samplingSliderContainer);
+        // Create slider for sampling rate adjustment
+        const samplingSliderContainer = document.createElement('div');
+        samplingSliderContainer.style.marginTop = '10px';
+        samplingSliderContainer.innerHTML = `
+            <label for="samplingSlider">Sampling Rate (higher = smoother): </label>
+            <input type="range" id="samplingSlider" min="1" max="8" value="${samplingFactor}" step="1">
+            <span id="samplingValue">${samplingFactor}</span>
+        `;
+        controlsContainer.appendChild(samplingSliderContainer);
 
-    // Add event listeners for all UI controls
-    
-    // Time ring position slider
-    const timeRingSlider = document.getElementById('timeRingSlider');
-    const timeRingValue = document.getElementById('timeRingValue');
-    if (timeRingSlider && timeRingValue) {
-        timeRingSlider.addEventListener('input', (e) => {
-            const value = e.target.value;
-            timeRingValue.textContent = value;
-            timeRingOffsetY = parseFloat(value);
-        });
-    }
+        // Add event listeners for all UI controls
+        
+        // Time ring position slider
+        const timeRingSlider = document.getElementById('timeRingSlider');
+        const timeRingValue = document.getElementById('timeRingValue');
+        if (timeRingSlider && timeRingValue) {
+            timeRingSlider.addEventListener('input', (e) => {
+                const value = e.target.value;
+                timeRingValue.textContent = value;
+                timeRingOffsetY = parseFloat(value);
+            });
+        }
 
-    // FFT size slider (logarithmic)
-    const fftSlider = document.getElementById('fftSizeSlider');
-    const fftValue = document.getElementById('fftSizeValue');
-    if (fftSlider && fftValue) {
-        fftSlider.addEventListener('input', (e) => {
-            const logValue = parseInt(e.target.value);
-            const newSize = Math.pow(2, logValue);
-            fftValue.textContent = newSize;
-            
-            // Only update if changed to avoid unnecessary recalculations
-            if (fftSize !== newSize) {
-                setFFTSize(newSize);
+        // FFT size slider (logarithmic)
+        const fftSlider = document.getElementById('fftSizeSlider');
+        const fftValue = document.getElementById('fftSizeValue');
+        if (fftSlider && fftValue) {
+            fftSlider.addEventListener('input', (e) => {
+                const logValue = parseInt(e.target.value);
+                const newSize = Math.pow(2, logValue);
+                fftValue.textContent = newSize;
                 
-                // Restart playback with new FFT size if currently playing
-                if (isPlaying && audioSource) {
-                    pauseAudio();
-                    playAudio();
+                // Only update if changed to avoid unnecessary recalculations
+                if (fftSize !== newSize) {
+                    setFFTSize(newSize);
+                    
+                    // Restart playback with new FFT size if currently playing
+                    if (isPlaying && audioSource) {
+                        pauseAudio();
+                        playAudio();
+                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    // Spiral growth factor slider
-    const spiralGrowthSlider = document.getElementById('spiralGrowthSlider');
-    const spiralGrowthValue = document.getElementById('spiralGrowthValue');
-    if (spiralGrowthSlider && spiralGrowthValue) {
-        spiralGrowthSlider.addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            spiralGrowthValue.textContent = value.toFixed(5);
-            spiralGrowthFactor = value;
-            
-            // Update the spiral parameter
-            const spiral = waves.find(wave => wave.type === 'timeSpiral');
-            if (spiral) {
-                spiral.growthFactor = value;
-            }
-        });
-    }
+        // Spiral growth factor slider
+        const spiralGrowthSlider = document.getElementById('spiralGrowthSlider');
+        const spiralGrowthValue = document.getElementById('spiralGrowthValue');
+        if (spiralGrowthSlider && spiralGrowthValue) {
+            spiralGrowthSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                spiralGrowthValue.textContent = value.toFixed(5);
+                spiralGrowthFactor = value;
+                
+                // Update the spiral parameter
+                const spiral = waves.find(wave => wave.type === 'timeSpiral');
+                if (spiral) {
+                    spiral.growthFactor = value;
+                }
+            });
+        }
 
-    // Spiral revolutions slider
-    const spiralRevolutionsSlider = document.getElementById('spiralRevolutionsSlider');
-    const spiralRevolutionsValue = document.getElementById('spiralRevolutionsValue');
-    if (spiralRevolutionsSlider && spiralRevolutionsValue) {
-        spiralRevolutionsSlider.addEventListener('input', (e) => {
-            const value = parseInt(e.target.value, 10);
-            spiralRevolutionsValue.textContent = value;
-            spiralRevolutions = value;
-            // Update the spiral if it exists
-            const spiral = waves.find(wave => wave.type === 'timeSpiral');
-            if (spiral) {
-                spiral.revolutions = value;
-                // Force regeneration of spiral
+        // Spiral revolutions slider
+        const spiralRevolutionsSlider = document.getElementById('spiralRevolutionsSlider');
+        const spiralRevolutionsValue = document.getElementById('spiralRevolutionsValue');
+        if (spiralRevolutionsSlider && spiralRevolutionsValue) {
+            spiralRevolutionsSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value, 10);
+                spiralRevolutionsValue.textContent = value;
+                spiralRevolutions = value;
+                // Update the spiral if it exists
+                const spiral = waves.find(wave => wave.type === 'timeSpiral');
+                if (spiral) {
+                    spiral.revolutions = value;
+                    // Force regeneration of spiral
+                    audioHistoryBuffer = [];
+                    updateTimeSpiral();
+                }
+            });
+        }
+
+        // History duration slider
+        const historyDurationSlider = document.getElementById('historyDurationSlider');
+        const historyDurationValue = document.getElementById('historyDurationValue');
+        if (historyDurationSlider && historyDurationValue) {
+            historyDurationSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                historyDurationValue.textContent = value.toFixed(1);
+                historyDuration = value;
+                
+                // Clear history buffer for clean restart with new duration
                 audioHistoryBuffer = [];
-                updateTimeSpiral();
-            }
-        });
-    }
+            });
+        }
 
-    // History duration slider
-    const historyDurationSlider = document.getElementById('historyDurationSlider');
-    const historyDurationValue = document.getElementById('historyDurationValue');
-    if (historyDurationSlider && historyDurationValue) {
-        historyDurationSlider.addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            historyDurationValue.textContent = value.toFixed(1);
-            historyDuration = value;
-            
-            // Clear history buffer for clean restart with new duration
-            audioHistoryBuffer = [];
-        });
-    }
-
-    // Sampling factor slider
-    const samplingSlider = document.getElementById('samplingSlider');
-    const samplingValue = document.getElementById('samplingValue');
-    if (samplingSlider && samplingValue) {
-        samplingSlider.addEventListener('input', (e) => {
-            const value = parseInt(e.target.value);
-            samplingValue.textContent = value;
-            samplingFactor = value;
-            
-            // Clear history buffer for clean restart with new sampling
-            audioHistoryBuffer = [];
-        });
+        // Sampling factor slider
+        const samplingSlider = document.getElementById('samplingSlider');
+        const samplingValue = document.getElementById('samplingValue');
+        if (samplingSlider && samplingValue) {
+            samplingSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                samplingValue.textContent = value;
+                samplingFactor = value;
+                
+                // Clear history buffer for clean restart with new sampling
+                audioHistoryBuffer = [];
+            });
+        }
     }
 
     // Add separator before view buttons
@@ -1614,6 +1631,11 @@ function setupEventListeners() {
 
 // Create help notification for system audio capture
 function createSystemAudioNote() {
+    // Skip on mobile devices
+    if (isMobile) {
+        return;
+    }
+    
     // Adjust position of controls if needed
     const controlsDiv = document.getElementById('controls');
     if (controlsDiv) {
