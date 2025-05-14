@@ -463,6 +463,9 @@ function createTimeSpiral() {
     });
 
     log('Created time domain spiral with glowing gold effect');
+    
+    // Immediately position the time spiral at the correct height
+    updateTimeRingPosition();
 }
 
 // Update time spiral with real-time audio data
@@ -1060,11 +1063,8 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Update position of time spiral based on slider
+// Update position of time spiral based on slider or default value
 function updateTimeRingPosition() {
-    const timeRingSlider = document.getElementById('timeRingSlider');
-    if (!timeRingSlider) return;
-    
     // Find the time spiral object
     const timeSpiral = waves.find(wave => wave.type === 'timeSpiral');
     if (timeSpiral && timeSpiral.mesh && frequencies.length > 0) {
@@ -1072,8 +1072,10 @@ function updateTimeRingPosition() {
         const highestRingY = startYFreq + ((frequencies.length - 1) * config.harmonic.spacing) + 
                           ((config.harmonic.count - 1) * 3);
         
-        // Set position based on slider value
-        timeSpiral.mesh.position.y = highestRingY + parseFloat(timeRingSlider.value);
+        // Set position based on slider value or default
+        const timeRingSlider = document.getElementById('timeRingSlider');
+        const offsetValue = timeRingSlider ? parseFloat(timeRingSlider.value) : timeRingOffsetY;
+        timeSpiral.mesh.position.y = highestRingY + offsetValue;
     }
 }
 
@@ -1293,9 +1295,10 @@ function setupEventListeners() {
 
         // Apply mobile styles for dropdown
         if (isMobile) {
-            sampleSelect.style.maxWidth = '60vw'; // Limit width on mobile
+            sampleSelect.style.maxWidth = '65%'; // Limit width on mobile
             sampleSelect.style.textOverflow = 'ellipsis'; // Add ellipsis for text overflow
             sampleSelect.style.fontSize = '14px'; // Slightly smaller font on mobile
+            sampleSelect.style.height = '40px'; // Match button height
             
             // Style the options for mobile
             const style = document.createElement('style');
@@ -1304,15 +1307,30 @@ function setupEventListeners() {
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
-                    max-width: 60vw;
+                    max-width: 100%;
                 }
                 
                 #playBtn, #pauseBtn {
-                    min-width: 40px;
+                    width: 40px;
                     height: 40px;
-                    padding: 0 8px;
+                    padding: 0;
                     margin: 0 4px;
                     font-size: 20px;
+                    flex-shrink: 0;
+                }
+                
+                #controls {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    width: 100%;
+                    padding: 8px;
+                    box-sizing: border-box;
+                }
+                
+                /* Remove any system audio note on mobile */
+                body > div:not([id]) {
+                    display: none !important;
                 }
             `;
             document.head.appendChild(style);
@@ -1727,8 +1745,13 @@ function setupEventListeners() {
 
 // Create help notification for system audio capture
 function createSystemAudioNote() {
-    // Skip on mobile devices
+    // Skip on mobile devices with additional check to ensure it's removed
     if (isMobile) {
+        // Find and remove any existing note that might have been created
+        const existingNotes = document.querySelectorAll('div[style*="position: fixed"][style*="top: 20px"]');
+        existingNotes.forEach(note => {
+            note.parentNode.removeChild(note);
+        });
         return;
     }
     
@@ -1759,10 +1782,11 @@ function createSystemAudioNote() {
 try {
     // Initialize core components
     initScene();
-    // initAudio(); // Removed direct call from here
     createWaves();
     setupEventListeners();
-    createSystemAudioNote();
+    if (!isMobile) {
+        createSystemAudioNote();
+    }
     
     // Start the animation loop
     animate();
