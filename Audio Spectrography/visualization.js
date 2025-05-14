@@ -52,6 +52,17 @@ let pausedTime = 0;            // Timestamp when audio was paused
 let startTime = 0;             // Timestamp when playback started
 let spiralRevolutions = 20;    // Number of revolutions in spiral visualization
 
+// Set optimal default values for mobile devices
+if (isMobile) {
+    // Default mobile configurations
+    timeRingOffsetY = 55;      // Time sphere height
+    historyDuration = 1.0;     // History length in seconds
+    fftSize = 4096;            // FFT size
+    spiralGrowthFactor = 0.1;  // Keep default spiral growth
+    spiralRevolutions = 20;    // Keep default revolutions
+    samplingFactor = 4;        // Keep default sampling factor
+}
+
 // Firebase audio loader for cloud storage integration
 let firebaseAudioLoader;
 
@@ -1280,6 +1291,44 @@ function setupEventListeners() {
             sampleSelect.removeChild(sampleSelect.firstChild);
         }
 
+        // Apply mobile styles for dropdown
+        if (isMobile) {
+            sampleSelect.style.maxWidth = '60vw'; // Limit width on mobile
+            sampleSelect.style.textOverflow = 'ellipsis'; // Add ellipsis for text overflow
+            sampleSelect.style.fontSize = '14px'; // Slightly smaller font on mobile
+            
+            // Style the options for mobile
+            const style = document.createElement('style');
+            style.textContent = `
+                #sampleSelect option {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 60vw;
+                }
+                
+                #playBtn, #pauseBtn {
+                    min-width: 40px;
+                    height: 40px;
+                    padding: 0 8px;
+                    margin: 0 4px;
+                    font-size: 20px;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Adjust controls container layout for mobile
+            const controlsContainer = document.getElementById('controls');
+            if (controlsContainer) {
+                controlsContainer.style.display = 'flex';
+                controlsContainer.style.flexWrap = 'nowrap';
+                controlsContainer.style.alignItems = 'center';
+                controlsContainer.style.width = '100%';
+                controlsContainer.style.boxSizing = 'border-box';
+                controlsContainer.style.padding = '8px';
+            }
+        }
+
         // Fallback list of audio files if we can't load a manifest
         const hardcodedAudioFiles = [
             "OMNI  SCALE (Demo, No Talking).mp3"
@@ -1415,6 +1464,16 @@ function setupEventListeners() {
         controlsContainer.style.padding = '10px';
         controlsContainer.style.borderRadius = '0';
         controlsContainer.style.color = 'white';
+        
+        // Mobile-specific styling for controls container
+        if (isMobile) {
+            controlsContainer.style.left = '8px';
+            controlsContainer.style.right = '8px';
+            controlsContainer.style.width = 'calc(100% - 16px)';
+            controlsContainer.style.boxSizing = 'border-box';
+            controlsContainer.style.padding = '8px';
+        }
+        
         document.body.appendChild(controlsContainer);
     }
 
@@ -1594,6 +1653,13 @@ function setupEventListeners() {
     viewButtonsContainer.style.display = 'flex';
     viewButtonsContainer.style.gap = '10px';
     viewButtonsContainer.style.marginTop = '10px';
+    
+    // Adjust view buttons container for mobile
+    if (isMobile) {
+        viewButtonsContainer.style.width = '100%';
+        viewButtonsContainer.style.justifyContent = 'space-between';
+    }
+    
     controlsContainer.appendChild(viewButtonsContainer);
 
     // Create buttons for each preset camera view
@@ -1613,6 +1679,14 @@ function setupEventListeners() {
         button.style.margin = '0';
         button.style.height = '32px';
         button.style.flex = '1';
+        
+        // Mobile-specific button styling
+        if (isMobile) {
+            button.style.padding = '8px 0';
+            button.style.fontSize = '16px';
+            button.style.height = '40px';
+            button.style.touchAction = 'manipulation'; // Better touch handling
+        }
 
         // Add hover effects
         button.addEventListener('mouseover', () => {
@@ -1627,6 +1701,28 @@ function setupEventListeners() {
 
         viewButtonsContainer.appendChild(button);
     });
+    
+    // On mobile, ensure playback controls are properly styled
+    if (isMobile) {
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        
+        if (playBtn) {
+            playBtn.style.width = '40px';
+            playBtn.style.height = '40px';
+            playBtn.style.fontSize = '20px';
+            playBtn.style.padding = '0';
+            playBtn.style.margin = '0 4px';
+        }
+        
+        if (pauseBtn) {
+            pauseBtn.style.width = '40px';
+            pauseBtn.style.height = '40px';
+            pauseBtn.style.fontSize = '20px';
+            pauseBtn.style.padding = '0';
+            pauseBtn.style.margin = '0 4px';
+        }
+    }
 }
 
 // Create help notification for system audio capture
