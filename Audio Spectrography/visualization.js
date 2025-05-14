@@ -77,6 +77,35 @@ const config = {
     }
 };
 
+
+/******************************************************************
+ *  MOBILE-AUDIO UNLOCK (runs on the first finger-tap)
+ ******************************************************************/
+let audioCtx;                            // forward declaration
+window.addEventListener('pointerdown', async function unlock () {
+    window.removeEventListener('pointerdown', unlock);
+
+    // create context on the SAME call-stack as the gesture
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    /*  iOS plays Web-Audio on the “ringer” channel, which is muted when the
+        side-switch is down.  A 1-frame silent <audio> bumps us to the
+        media channel so sound is audible even in silent mode.           */
+    const kick = new Audio();
+    kick.src = 'data:audio/mp3;base64,//uQxAAAAAAA=';   // <-- silent MP3
+    kick.play().catch(() => {});      // fire-and-forget
+    await audioCtx.resume();          // Autoplay gate passed
+});
+
+/* Utility: never call .start() until the context is RUNNING. */
+function safeStart (src, offset = 0) {
+    if (audioCtx.state !== 'running') audioCtx.resume();
+    src.start(0, offset);
+}
+
+
+
+
 // Initialize Three.js scene, camera, renderer and lighting
 function initScene() {
     // Create scene with dark background
@@ -136,7 +165,7 @@ function initAudio() {
     lastAudioTime = 0; // Reset timing tracker
     try {
         // Create audio context using browser-compatible constructor
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioContext = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
         setFFTSize(fftSize); // Configure FFT size using dedicated function
         
@@ -710,7 +739,7 @@ function playAudio() {
         // Calculate the correct start time for pause/resume functionality
         const currentTime = audioContext.currentTime;
         startTime = currentTime - pausedTime; // Adjust startTime to account for previous playback
-        audioSource.start(0, pausedTime);     // Start from pausedTime position
+        safeStart(audioSource, pausedTime);
         
         isPlaying = true;
         log(pausedTime > 0 ? `Resuming playback from ${pausedTime.toFixed(2)}s` : 'Starting playback');
