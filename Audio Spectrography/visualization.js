@@ -23,6 +23,29 @@ function log(message) {
     }
 }
 
+// Remove any initialization logs that might be visible on mobile ONLY
+if (isMobile) {
+    // Hide all initialization log elements in the DOM
+    setTimeout(() => {
+        const bodyTextNodes = Array.from(document.body.childNodes)
+            .filter(node => node.nodeType === Node.TEXT_NODE || 
+                   (node.nodeType === Node.ELEMENT_NODE && 
+                    !node.id && 
+                    ["DIV", "SPAN", "P"].includes(node.tagName) &&
+                    !node.classList.length));
+        
+        bodyTextNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                node.textContent = '';
+            } else if (node.textContent.includes('Initializing') || 
+                       node.textContent.includes('Window loaded') ||
+                       node.textContent.includes('ERROR')) {
+                node.style.display = 'none';
+            }
+        });
+    }, 100);
+}
+
 log('Audio Visualizer starting');
 if (isMobile) {
     log('Mobile device detected - simplified UI mode');
@@ -1293,14 +1316,8 @@ function setupEventListeners() {
             sampleSelect.removeChild(sampleSelect.firstChild);
         }
 
-        // Apply mobile styles for dropdown
+        // Style the options for mobile ONLY
         if (isMobile) {
-            sampleSelect.style.maxWidth = '65%'; // Limit width on mobile
-            sampleSelect.style.textOverflow = 'ellipsis'; // Add ellipsis for text overflow
-            sampleSelect.style.fontSize = '14px'; // Slightly smaller font on mobile
-            sampleSelect.style.height = '40px'; // Match button height
-            
-            // Style the options for mobile
             const style = document.createElement('style');
             style.textContent = `
                 #sampleSelect option {
@@ -1322,38 +1339,38 @@ function setupEventListeners() {
                 #controls {
                     display: flex;
                     align-items: center;
-                    justify-content: space-between;
+                    justify-content: flex-start;
                     width: 100%;
-                    padding: 8px;
+                    padding: 8px 8px 8px 0;
                     box-sizing: border-box;
-                }
-                
-                /* Remove any system audio note on mobile */
-                body > div:not([id]) {
-                    display: none !important;
+                    max-width: calc(100% - 16px);
                 }
                 
                 /* Hide camera button on mobile */
                 #cameraInfoBtn {
                     display: none;
                 }
-                
-                /* Hide any labels or text not in a specific container */
-                body > label, body > span, body > p:not(#debug p) {
-                    display: none !important;
-                }
             `;
             document.head.appendChild(style);
+        }
+        
+        // Adjust controls container layout for mobile
+        const controlsContainer = document.getElementById('controls');
+        if (controlsContainer && isMobile) {
+            controlsContainer.style.display = 'flex';
+            controlsContainer.style.flexWrap = 'nowrap';
+            controlsContainer.style.alignItems = 'center';
+            controlsContainer.style.width = 'calc(100% - 16px)';
+            controlsContainer.style.maxWidth = 'calc(100% - 16px)';
+            controlsContainer.style.boxSizing = 'border-box';
+            controlsContainer.style.padding = '8px 0 8px 8px';
+            controlsContainer.style.marginLeft = '8px';
             
-            // Adjust controls container layout for mobile
-            const controlsContainer = document.getElementById('controls');
-            if (controlsContainer) {
-                controlsContainer.style.display = 'flex';
-                controlsContainer.style.flexWrap = 'nowrap';
-                controlsContainer.style.alignItems = 'center';
-                controlsContainer.style.width = '100%';
-                controlsContainer.style.boxSizing = 'border-box';
-                controlsContainer.style.padding = '8px';
+            // Make dropdown match alignment with the View buttons
+            if (sampleSelect) {
+                sampleSelect.style.maxWidth = 'calc(100% - 100px)';
+                sampleSelect.style.flexGrow = '1';
+                sampleSelect.style.height = '40px';
             }
         }
 
@@ -1478,7 +1495,7 @@ function setupEventListeners() {
     const cameraInfoBtn = document.getElementById('cameraInfoBtn');
     if (cameraInfoBtn) {
         if (isMobile) {
-            // Hide camera button on mobile
+            // Hide camera button on mobile ONLY
             cameraInfoBtn.style.display = 'none';
         } else {
             cameraInfoBtn.addEventListener('click', displayCameraInfo);
@@ -1505,7 +1522,7 @@ function setupEventListeners() {
             controlsContainer.style.width = 'calc(100% - 16px)';
             controlsContainer.style.boxSizing = 'border-box';
             controlsContainer.style.padding = '8px';
-            controlsContainer.style.background = 'transparent';
+            controlsContainer.style.background = 'rgba(0,0,0,0.5)'; // Restore semi-transparent panel
         }
         
         document.body.appendChild(controlsContainer);
@@ -1675,13 +1692,14 @@ function setupEventListeners() {
         }
     }
 
-    // Add separator before view buttons (only if not on mobile)
+    // Add separator before view buttons
     const separator = document.createElement('div');
     separator.style.height = '1px';
     separator.style.background = 'rgba(255, 255, 255, 0.2)';
     separator.style.margin = '10px 0';
+    // Hide separator on mobile ONLY
     if (isMobile) {
-        separator.style.display = 'none'; // Hide separator on mobile
+        separator.style.display = 'none';
     }
     controlsContainer.appendChild(separator);
 
@@ -1689,13 +1707,8 @@ function setupEventListeners() {
     const viewButtonsContainer = document.createElement('div');
     viewButtonsContainer.style.display = 'flex';
     viewButtonsContainer.style.gap = '10px';
-    viewButtonsContainer.style.marginTop = isMobile ? '0' : '10px'; // Remove top margin on mobile
-    
-    // Adjust view buttons container for mobile
-    if (isMobile) {
-        viewButtonsContainer.style.width = '100%';
-        viewButtonsContainer.style.justifyContent = 'space-between';
-    }
+    // Set margin differently for mobile vs desktop
+    viewButtonsContainer.style.marginTop = isMobile ? '0' : '10px';
     
     controlsContainer.appendChild(viewButtonsContainer);
 
@@ -1750,6 +1763,8 @@ function setupEventListeners() {
             playBtn.style.fontSize = '20px';
             playBtn.style.padding = '0';
             playBtn.style.margin = '0 4px';
+            playBtn.innerHTML = '&#9658;'; // Proper play symbol
+            playBtn.style.lineHeight = '38px';
         }
         
         if (pauseBtn) {
@@ -1758,6 +1773,8 @@ function setupEventListeners() {
             pauseBtn.style.fontSize = '20px';
             pauseBtn.style.padding = '0';
             pauseBtn.style.margin = '0 4px';
+            pauseBtn.innerHTML = '&#10074;&#10074;'; // Proper pause symbol
+            pauseBtn.style.lineHeight = '34px';
         }
     }
 }
