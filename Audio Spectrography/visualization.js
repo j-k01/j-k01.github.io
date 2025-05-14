@@ -1332,6 +1332,16 @@ function setupEventListeners() {
                 body > div:not([id]) {
                     display: none !important;
                 }
+                
+                /* Hide camera button on mobile */
+                #cameraInfoBtn {
+                    display: none;
+                }
+                
+                /* Hide any labels or text not in a specific container */
+                body > label, body > span, body > p:not(#debug p) {
+                    display: none !important;
+                }
             `;
             document.head.appendChild(style);
             
@@ -1467,7 +1477,12 @@ function setupEventListeners() {
     // Setup camera info button
     const cameraInfoBtn = document.getElementById('cameraInfoBtn');
     if (cameraInfoBtn) {
-        cameraInfoBtn.addEventListener('click', displayCameraInfo);
+        if (isMobile) {
+            // Hide camera button on mobile
+            cameraInfoBtn.style.display = 'none';
+        } else {
+            cameraInfoBtn.addEventListener('click', displayCameraInfo);
+        }
     }
     
     // Create UI controls container if needed
@@ -1490,6 +1505,7 @@ function setupEventListeners() {
             controlsContainer.style.width = 'calc(100% - 16px)';
             controlsContainer.style.boxSizing = 'border-box';
             controlsContainer.style.padding = '8px';
+            controlsContainer.style.background = 'transparent';
         }
         
         document.body.appendChild(controlsContainer);
@@ -1659,18 +1675,21 @@ function setupEventListeners() {
         }
     }
 
-    // Add separator before view buttons
+    // Add separator before view buttons (only if not on mobile)
     const separator = document.createElement('div');
     separator.style.height = '1px';
     separator.style.background = 'rgba(255, 255, 255, 0.2)';
     separator.style.margin = '10px 0';
+    if (isMobile) {
+        separator.style.display = 'none'; // Hide separator on mobile
+    }
     controlsContainer.appendChild(separator);
 
     // Create container for camera view buttons
     const viewButtonsContainer = document.createElement('div');
     viewButtonsContainer.style.display = 'flex';
     viewButtonsContainer.style.gap = '10px';
-    viewButtonsContainer.style.marginTop = '10px';
+    viewButtonsContainer.style.marginTop = isMobile ? '0' : '10px'; // Remove top margin on mobile
     
     // Adjust view buttons container for mobile
     if (isMobile) {
