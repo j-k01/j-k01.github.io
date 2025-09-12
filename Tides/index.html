@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tides – Earth/Sun/Moon System</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: Arial, sans-serif; }
+      #controls { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; }
+      #controls label { display: block; margin: 5px 0; }
+      #controls input[type="range"] { width: 150px; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="controls">
+      <label>Speed: <input id="speed" type="range" min="0" max="100" value="10" /> <span id="speedValue">10</span>x</label>
+      <button id="pauseBtn">Pause</button>
+      <button id="resetBtn">Reset to Now</button>
+      <div style="margin-top: 5px;">
+        <label><input type="checkbox" id="sunTideCheck" checked> Sun Tide</label>
+        <label><input type="checkbox" id="moonTideCheck" checked> Moon Tide</label>
+      </div>
+      <div style="margin-top: 5px;">
+        <label><input type="checkbox" id="forceVectorsCheck"> Show Force Vectors</label>
+        <label><input type="checkbox" id="totalForceCheck"> Show Total Force</label>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/controls/OrbitControls.js';
+      
+      // Load astronomy.js as ES module from the correct URL
+      const Astronomy = await import('https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/+esm');
+
+      // Scene setup
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000011);
+      document.body.appendChild(renderer.domElement);
+
+      // Camera controls
+      const controls = new OrbitControls(camera, renderer.domElement);
+      camera.position.set(0, 30, 80);
+      camera.lookAt(0, 0, 0);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      // Lighting - brighter so we can see things
+      scene.add(new THREE.AmbientLight(0x404040, 1.0));
+      const sunLight = new THREE.PointLight(0xffffff, 1, 0);
+      scene.add(sunLight);
+
+      // Earth at center
+      const earthGeometry = new THREE.SphereGeometry(6.37, 32, 32);
+      const earthMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x2233ff, 
+        emissive: 0x112244,
+        shininess: 10 
+      });
+      const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+      scene.add(earth);
+
+      // Deformable tide sphere
+      const tideGeometry = new THREE.SphereGeometry(earth.geometry.parameters.radius + 0.5, 32, 32);
+      // Store original vertices to apply deformation
+      const originalTideVertices = tideGeometry.attributes.position.clone().array;
+      const tideMaterial = new THREE.MeshPhongMaterial({
+        color: 0x6699ff,
+        transparent: true,
+        opacity: 0.6,
+        shininess: 50
+      });
+      const tideSphere = new THREE.Mesh(tideGeometry, tideMaterial);
+      scene.add(tideSphere);
+
+      // Force Vector Field
+      const forceVectorGroup = new THREE.Group();
+      const sunForceArrows = [];
+      const moonForceArrows = [];
+      const totalForceArrows = [];
+      const arrowSampleRate = 4; // Show an arrow for every Nth vertex pair
+      // Use the undeformed baseline vertices to avoid feedback/jitter in vectors
+      const originalVertices = originalTideVertices;
+
+      for (let i = 0; i < originalVertices.length; i += 3 * arrowSampleRate) {
+          const p = new THREE.Vector3(originalVertices[i], originalVertices[i+1], originalVertices[i+2]);
+          const arrowSun = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), p, 1, 0xffff00, 1, 0.5);
+          const arrowMoon = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), p, 1, 0xffffff, 1, 0.5);
+          const arrowTotal = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), p, 1, 0xff00ff, 1, 0.5); // Magenta for total
+          sunForceArrows.push(arrowSun);
+          moonForceArrows.push(arrowMoon);
+          totalForceArrows.push(arrowTotal);
+          forceVectorGroup.add(arrowSun);
+          forceVectorGroup.add(arrowMoon);
+          forceVectorGroup.add(arrowTotal);
+      }
+      forceVectorGroup.visible = false;
+      scene.add(forceVectorGroup);
+
+
+      // Moon - larger for visibility, volume ratio maintained
+      const moonRadius = 1.74;
+      const moonGeometry = new THREE.SphereGeometry(moonRadius, 16, 16);
+      const moonMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0xaaaaaa,
+        emissive: 0x333333 
+      });
+      const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+      moon.position.set(38, 0, 0); // Give initial position so we can see it
+      scene.add(moon);
+
+      // Sun - half the volume of moon as requested
+      const sunRadius = moonRadius * Math.cbrt(0.5);
+      const sunGeometry = new THREE.SphereGeometry(sunRadius, 16, 16);
+      const sunMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0xffff00,
+        emissive: 0xffaa00,
+        emissiveIntensity: 0.5
+      });
+      const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+      sun.position.set(-150, 0, 0); // Give initial position so we can see it
+      scene.add(sun);
+
+      // Barycenter markers
+      const baryGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+      const earthMoonBary = new THREE.Mesh(baryGeometry, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+      const earthSunBary = new THREE.Mesh(baryGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+      scene.add(earthMoonBary);
+      scene.add(earthSunBary);
+
+      // Orbital paths - This is a simplified visual guide, not the true inclined orbit
+      const moonOrbitRadius = 12.3;
+      const moonOrbitGeometry = new THREE.RingGeometry(moonOrbitRadius, moonOrbitRadius + 0.2, 64);
+      const moonOrbitMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x666666, 
+        transparent: true, 
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+      const moonOrbit = new THREE.Mesh(moonOrbitGeometry, moonOrbitMaterial);
+      moonOrbit.rotation.x = Math.PI / 2;
+      scene.add(moonOrbit);
+
+      // Animation variables
+      let isPaused = false;
+      let animationSpeed = 10;
+      let currentTime = new Date();
+      let sunTideEnabled = true;
+      let moonTideEnabled = true;
+      let totalForceEnabled = false;
+      let trueSunVec = null; // To store true AU vector from Astronomy.js
+      let trueMoonVec = null; // To store true AU vector from Astronomy.js
+      let lastMoonDistanceAU = 0.00257; // init approx
+      let lastSunDistanceAU = 1.0;      // init approx
+
+      // Establish a FIXED, GLOBAL reference magnitude so scale is consistent across all points and all frames.
+      // We use the Moon's tidal force at its MEAN distance as our unchanging "100%" yardstick.
+      const MEAN_MOON_DISTANCE_AU = 384400 / 149.598e6;
+      const EARTH_RADIUS_AU = 6371 / 149.598e6;
+      const MASS_MOON_CONST = 7.347e22;
+      const refMoonVec = new THREE.Vector3(MEAN_MOON_DISTANCE_AU, 0, 0);
+      const refMoonForceOnCenter = refMoonVec.clone().normalize().multiplyScalar(MASS_MOON_CONST / refMoonVec.lengthSq());
+      const ref_p_au = new THREE.Vector3(EARTH_RADIUS_AU, 0, 0);
+      const refVecToMoon = new THREE.Vector3().subVectors(refMoonVec, ref_p_au);
+      const refMoonForceOnPoint = refVecToMoon.clone().normalize().multiplyScalar(MASS_MOON_CONST / refVecToMoon.lengthSq());
+      const refTidalVec = new THREE.Vector3().subVectors(refMoonForceOnPoint, refMoonForceOnCenter);
+      const REFERENCE_MAGNITUDE = Math.max(refTidalVec.length(), 1e-30);
+
+      // UI Controls
+      const speedSlider = document.getElementById('speed');
+      const speedValue = document.getElementById('speedValue');
+      const pauseBtn = document.getElementById('pauseBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const sunTideCheck = document.getElementById('sunTideCheck');
+      const moonTideCheck = document.getElementById('moonTideCheck');
+      const forceVectorsCheck = document.getElementById('forceVectorsCheck');
+      const totalForceCheck = document.getElementById('totalForceCheck');
+
+      speedSlider.addEventListener('input', (e) => {
+        animationSpeed = parseInt(e.target.value);
+        speedValue.textContent = animationSpeed;
+      });
+
+      pauseBtn.addEventListener('click', () => {
+        isPaused = !isPaused;
+        pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+      });
+
+      resetBtn.addEventListener('click', () => {
+        currentTime = new Date();
+      });
+
+      sunTideCheck.addEventListener('change', (e) => { sunTideEnabled = e.target.checked; });
+      moonTideCheck.addEventListener('change', (e) => { moonTideEnabled = e.target.checked; });
+      forceVectorsCheck.addEventListener('change', (e) => { 
+        forceVectorGroup.visible = e.target.checked || totalForceEnabled; 
+      });
+      totalForceCheck.addEventListener('change', (e) => { 
+        totalForceEnabled = e.target.checked; 
+        forceVectorGroup.visible = e.target.checked || forceVectorsCheck.checked;
+      });
+
+      // Calculate TRUE positions using astronomy.js for the current date/time
+      function updatePositions() {
+        if (!Astronomy) {
+          return; // Wait for astronomy.js to load, don't spam console
+        }
+
+        try {
+          // Get TRUE Moon position (geocentric) at current simulation time
+          const moonVector = Astronomy.GeoVector('Moon', currentTime, false);
+          trueMoonVec = new THREE.Vector3(moonVector.x, moonVector.z, -moonVector.y); // Store for force calcs
+          // Convert from AU to visualization scale (Moon is ~384,400 km = 0.00257 AU from Earth)
+          const moonScale = 6800; // Visual scale factor - INCREASED to move farther away
+          lastMoonDistanceAU = Math.hypot(moonVector.x, moonVector.y, moonVector.z);
+          moon.position.set(
+            moonVector.x * moonScale,
+            moonVector.z * moonScale,  // astronomy.js Z becomes our Y
+            -moonVector.y * moonScale  // astronomy.js Y becomes our -Z
+          );
+
+          // Get TRUE Sun position (geocentric) at current simulation time
+          const sunVector = Astronomy.GeoVector('Sun', currentTime, false);
+          trueSunVec = new THREE.Vector3(sunVector.x, sunVector.z, -sunVector.y); // Store for force calcs
+          // Sun is ~1 AU from Earth
+          const sunScale = 30; // Visual scale factor - DECREASED to bring it closer
+          lastSunDistanceAU = Math.hypot(sunVector.x, sunVector.y, sunVector.z);
+          sun.position.set(
+            sunVector.x * sunScale,
+            sunVector.z * sunScale,
+            -sunVector.y * sunScale
+          );
+
+          // Update light position to follow sun
+          sunLight.position.copy(sun.position);
+
+          // Calculate barycenters using TRUE positions
+          // Earth-Moon barycenter (Moon is 1/81.3 Earth's mass)
+          const earthMoonBaryPos = moon.position.clone().multiplyScalar(1/82.3);
+          earthMoonBary.position.copy(earthMoonBaryPos);
+
+          // Earth-Sun barycenter (Sun is 333,000x Earth's mass)
+          const earthSunBaryPos = sun.position.clone().multiplyScalar(1/333000);
+          earthSunBary.position.copy(earthSunBaryPos);
+
+          // Deform the tide sphere and update force vectors
+          updateTidesAndForces();
+
+        } catch (error) {
+          console.warn('Astronomy calculation error:', error);
+        }
+      }
+
+      function updateTidesAndForces() {
+        const tidePositions = tideGeometry.attributes.position.array;
+        const exaggeration = 1.0; // Visual gain for tide deformation
+        const displayLength = 2.0; // The length of the strongest possible tidal vector
+
+        // Use the same physical constants from our fixed reference
+        const MASS_SUN = 1.989e30;
+        const MASS_MOON = 7.347e22;
+        const earthRadiusAU = EARTH_RADIUS_AU; // from global const
+
+        // Force on Earth's center from true vectors (re-calculated here for clarity)
+        const sunForceOnCenter = trueSunVec.clone().normalize().multiplyScalar(MASS_SUN / trueSunVec.lengthSq());
+        const moonForceOnCenter = trueMoonVec.clone().normalize().multiplyScalar(MASS_MOON / trueMoonVec.lengthSq());
+        
+        // --- 1. Calculate all vertex displacements first ---
+        const displacedVertices = [];
+        for (let i = 0; i < originalVertices.length; i += 3) {
+            const p = new THREE.Vector3(
+              originalVertices[i],
+              originalVertices[i + 1],
+              originalVertices[i + 2]
+            );
+            const pNormalized = p.clone().normalize();
+            const p_au = pNormalized.clone().multiplyScalar(earthRadiusAU);
+
+            // Use the P2 Legendre Polynomial for tide deformation
+            const MASS_SUN_OVER_MOON = 1.98847e30 / 7.342e22; // ≈ 2.706e7
+            const sunRelative = MASS_SUN_OVER_MOON * Math.pow(lastMoonDistanceAU / lastSunDistanceAU, 3);
+            const baseGain = 0.5;
+            const moonAmp = baseGain * exaggeration;
+            const sunAmp = baseGain * exaggeration * sunRelative;
+            const sunAlignment = pNormalized.dot(sun.position.clone().normalize());
+            const moonAlignment = pNormalized.dot(moon.position.clone().normalize());
+            const P2_sun = 0.5 * (3 * sunAlignment * sunAlignment - 1);
+            const P2_moon = 0.5 * (3 * moonAlignment * moonAlignment - 1);
+            const sunDisplacement = sunTideEnabled ? (sunAmp * P2_sun) : 0;
+            const moonDisplacement = moonTideEnabled ? (moonAmp * P2_moon) : 0;
+            const totalDisplacementAmount = sunDisplacement + moonDisplacement;
+            const displacementVector = pNormalized.clone().multiplyScalar(totalDisplacementAmount);
+
+            tidePositions[i]     = originalVertices[i]     + displacementVector.x;
+            tidePositions[i + 1] = originalVertices[i + 1] + displacementVector.y;
+            tidePositions[i + 2] = originalVertices[i + 2] + displacementVector.z;
+            displacedVertices.push(new THREE.Vector3(tidePositions[i], tidePositions[i+1], tidePositions[i+2]));
+        }
+        tideGeometry.attributes.position.needsUpdate = true;
+        tideGeometry.computeVertexNormals();
+
+        // --- 2. Update force arrows, positioning them on the displaced surface ---
+        if (forceVectorGroup.visible) {
+            let arrowCounter = 0;
+            for (let i = 0; i < originalVertices.length; i += 3 * arrowSampleRate) {
+                const p = new THREE.Vector3(
+                  originalVertices[i],
+                  originalVertices[i+1],
+                  originalVertices[i+2]
+                );
+                const p_au = p.clone().normalize().multiplyScalar(earthRadiusAU);
+                const displaced_p = displacedVertices[i/3];
+
+                // Calculate forces (same logic as before)
+                const vecToSun = new THREE.Vector3().subVectors(trueSunVec, p_au);
+                const sunForceOnPoint = vecToSun.clone().normalize().multiplyScalar(MASS_SUN / vecToSun.lengthSq());
+                const sunTidalVector = new THREE.Vector3().subVectors(sunForceOnPoint, sunForceOnCenter);
+                const sunMag = sunTidalVector.length();
+
+                const vecToMoon = new THREE.Vector3().subVectors(trueMoonVec, p_au);
+                const moonForceOnPoint = vecToMoon.clone().normalize().multiplyScalar(MASS_MOON / vecToMoon.lengthSq());
+                const moonTidalVector = new THREE.Vector3().subVectors(moonForceOnPoint, moonForceOnCenter);
+                const moonMag = moonTidalVector.length();
+                
+                const totalTidalVector = new THREE.Vector3();
+                if (sunTideEnabled) totalTidalVector.add(sunTidalVector.clone());
+                if (moonTideEnabled) totalTidalVector.add(moonTidalVector.clone());
+                const totalMag = totalTidalVector.length();
+
+                const sunLen = (sunMag / REFERENCE_MAGNITUDE) * displayLength;
+                const moonLen = (moonMag / REFERENCE_MAGNITUDE) * displayLength;
+                const totalLen = (totalMag / REFERENCE_MAGNITUDE) * displayLength;
+
+                // Update arrows, now using displaced_p for their origin
+                const sunArrow = sunForceArrows[arrowCounter];
+                const moonArrow = moonForceArrows[arrowCounter];
+                const totalArrow = totalForceArrows[arrowCounter];
+
+                sunArrow.position.copy(displaced_p);
+                if (sunTideEnabled && !totalForceEnabled) {
+                    sunArrow.setDirection(sunTidalVector.normalize());
+                    sunArrow.setLength(sunLen);
+                    sunArrow.visible = true;
+                } else {
+                    sunArrow.visible = false;
+                }
+
+                moonArrow.position.copy(displaced_p);
+                if (moonTideEnabled && !totalForceEnabled) {
+                    moonArrow.setDirection(moonTidalVector.normalize());
+                    moonArrow.setLength(moonLen);
+                    moonArrow.visible = true;
+                } else {
+                    moonArrow.visible = false;
+                }
+
+                if (totalForceEnabled) {
+                    if (totalLen > 0) {
+                        totalArrow.setDirection(totalTidalVector.normalize());
+                        totalArrow.setLength(totalLen);
+                    }
+                    totalArrow.position.copy(displaced_p);
+                    totalArrow.visible = true;
+                } else {
+                    totalArrow.visible = false;
+                }
+                arrowCounter++;
+            }
+        }
+      }
+
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+
+        if (!isPaused) {
+          // Advance time - each frame advances by (speed * 1 hour)
+          currentTime = new Date(currentTime.getTime() + animationSpeed * 3600000 / 60);
+          updatePositions();
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Astronomy.js is now loaded via ES module import
+      console.log('Astronomy.js loaded:', !!Astronomy);
+      console.log('Starting animation...');
+      console.log('Earth position:', earth.position);
+      console.log('Camera position:', camera.position);
+      
+      // Update positions immediately since Astronomy is loaded
+      updatePositions();
+      animate();
+    </script>
+  </body>
+</html>
