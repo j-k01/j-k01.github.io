@@ -24,6 +24,10 @@
       <button id="pauseBtn">Pause</button>
       <button id="resetBtn">Reset to Now</button>
       <div style="margin-top: 5px;">
+        <label>Go to Date: <input type="datetime-local" id="goToDateInput" /></label>
+        <button id="goToBtn">Go</button>
+      </div>
+      <div style="margin-top: 5px;">
         <label><input type="checkbox" id="sunTideCheck" checked> Sun Tide</label>
         <label><input type="checkbox" id="moonTideCheck" checked> Moon Tide</label>
       </div>
@@ -163,6 +167,13 @@
       let lastMoonDistanceAU = 0.00257; // init approx
       let lastSunDistanceAU = 1.0;      // init approx
 
+      // Time tweening variables
+      let isTweening = false;
+      let tweenStartTime = 0;
+      let tweenDuration = 4000; // ms
+      let tweenStartDate = null;
+      let tweenEndDate = null;
+
       // Establish a FIXED, GLOBAL reference magnitude so scale is consistent across all points and all frames.
       // We use the Moon's tidal force at its MEAN distance as our unchanging "100%" yardstick.
       const MEAN_MOON_DISTANCE_AU = 384400 / 149.598e6;
@@ -185,6 +196,8 @@
       const moonTideCheck = document.getElementById('moonTideCheck');
       const forceVectorsCheck = document.getElementById('forceVectorsCheck');
       const totalForceCheck = document.getElementById('totalForceCheck');
+      const goToDateInput = document.getElementById('goToDateInput');
+      const goToBtn = document.getElementById('goToBtn');
 
       speedSlider.addEventListener('input', (e) => {
         animationSpeed = parseInt(e.target.value);
@@ -209,6 +222,23 @@
         totalForceEnabled = e.target.checked; 
         forceVectorGroup.visible = e.target.checked || forceVectorsCheck.checked;
       });
+
+      goToBtn.addEventListener('click', () => {
+        const targetDateString = goToDateInput.value;
+        if (targetDateString) {
+            tweenEndDate = new Date(targetDateString);
+            tweenStartDate = new Date(currentTime.getTime());
+            tweenStartTime = performance.now();
+            isTweening = true;
+            isPaused = false; // Ensure animation is running for the tween
+            pauseBtn.textContent = 'Pause';
+        }
+      });
+
+      function easeInOutSine(t) {
+        // Parabolic-like easing (slow-fast-slow)
+        return -(Math.cos(Math.PI * t) - 1) / 2;
+      }
 
       // Calculate TRUE positions using astronomy.js for the current date/time
       function updatePositions() {
@@ -383,7 +413,23 @@
       function animate() {
         requestAnimationFrame(animate);
 
-        if (!isPaused) {
+        if (isTweening) {
+            const elapsed = performance.now() - tweenStartTime;
+            let progress = elapsed / tweenDuration;
+
+            if (progress >= 1) {
+                progress = 1;
+                isTweening = false;
+                currentTime = new Date(tweenEndDate.getTime());
+            } else {
+                const easedProgress = easeInOutSine(progress);
+                const startMillis = tweenStartDate.getTime();
+                const endMillis = tweenEndDate.getTime();
+                const currentMillis = startMillis + (endMillis - startMillis) * easedProgress;
+                currentTime = new Date(currentMillis);
+            }
+            updatePositions();
+        } else if (!isPaused) {
           // Advance time - each frame advances by (speed * 1 hour)
           currentTime = new Date(currentTime.getTime() + animationSpeed * 3600000 / 60);
           updatePositions();
