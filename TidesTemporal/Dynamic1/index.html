@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harmonic Tides Prototype</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.module.js"
+        }
+      }
+    </script>
+    <style>
+      html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: Arial, sans-serif; }
+      #ui { position: fixed; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 4px; }
+      #ui label { display:block; margin:4px 0; }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div>
+        <button id="play">Play</button>
+        <button id="pause">Pause</button>
+        <input id="datetime" type="datetime-local" step="1" />
+        <button id="jump">Go</button>
+        <span id="tlabel"></span>
+      </div>
+      <label>FPS <input id="fps" type="range" min="1" max="60" value="16"/></label>
+      <label>Exag <input id="exag" type="range" min="10" max="1000000" step="100" value="200000"/></label>
+      <label>Range (m) <input id="range" type="range" min="0.1" max="1" step="0.01" value="0.4"/></label>
+    </div>
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/controls/OrbitControls.js';
+
+      async function main() {
+        // Load real harmonics exported from GOT5.5/5.6 with fallback filenames
+        async function loadHarm(){
+          const candidates = ['harmonics_demo.json', 'harmonics_dem_lando.json'];
+          for (const url of candidates){
+            try {
+              const r = await fetch(url, { cache: 'no-cache' });
+              if (r.ok) {
+                console.log('Loaded harmonics from', url);
+                return await r.json();
+              } else {
+                console.warn('Failed to load', url, r.status, r.statusText);
+              }
+            } catch (e) {
+              console.warn('Error fetching', url, e);
+            }
+          }
+          return null;
+        }
+        const harm = await loadHarm();
+        if (!harm) {
+          const msg = 'Failed to load harmonics data (tried harmonics_demo.json and harmonics_dem_lando.json). Generate it via: python scripts/export_harmonics.py --tides-root . --lat-step 5 --lon-step 5 --output web/harmonics_demo.json';
+          console.error(msg);
+          const div = document.createElement('div');
+          div.textContent = msg;
+          div.style.position = 'fixed';
+          div.style.top = '50%';
+          div.style.left = '50%';
+          div.style.transform = 'translate(-50%, -50%)';
+          div.style.background = 'rgba(0,0,0,0.7)';
+          div.style.padding = '12px 16px';
+          div.style.borderRadius = '6px';
+          document.body.appendChild(div);
+          return; // Stop execution if no data
+        }
+
+        const lats = harm.latitudes;
+        const lons = harm.longitudes;
+        const N = lats.length;
+        const names = harm.meta.constituents;
+        const K = names.length;
+        const land = harm.land_mask || new Array(N).fill(false);
+
+        // Convert to typed arrays and compute angular speeds from periods (use simplified Doodson where known or fallback approx).
+        // For now, accept a static mapping for common constituents; others default to zero (static phase contribution).
+        const periodHours = {
+          'M2': 12.4206012,
+          'S2': 12.0000000,
+          'N2': 12.6583475,
+          'K2': 11.9672361,
+          'K1': 23.9344721,
+          'O1': 25.8193387,
+          'P1': 24.065889,
+          'Q1': 26.868356,
+          'M4': 6.2103006,
+          'MS4': 6.0,
+          'S1': 24.0,
+          'OO1': 22.30608,
+          'SIG1': 22.3972,
+          '2N2': 12.905374,
+          'J1': 23.0985,
+          'M3': 8.2804008,
+          // Additional
+          'MU2': 12.871754,
+          'L2': 12.191620,
+          'M1': 24.841200
+        };
+        const Omega = new Float64Array(K);
+        for (let k=0;k<K;k++) {
+          let name = names[k].toUpperCase();
+          // Normalize common variants: strip primes, fix O01->OO1
+          name = name.replace(/[\'`′]/g, '');
+          if (name === 'O01') name = 'OO1';
+          const ph = periodHours[name];
+          Omega[k] = ph ? (2*Math.PI/(ph*3600)) : 0.0;
+        }
+        // Debug: list any zero-frequency constituents (won't oscillate)
+        const zeroFreq = [];
+        for (let k=0;k<K;k++) if (Omega[k] === 0) zeroFreq.push(names[k]);
+        if (zeroFreq.length) console.warn('Zero-frequency constituents (no oscillation):', zeroFreq);
+        // Flatten amplitudes/phases into typed arrays (amplitudes: meters; phases: radians)
+        const A = new Float32Array(N*K);
+        const Phi = new Float32Array(N*K);
+        for (let k=0;k<K;k++) {
+          const ak = harm.amplitudes[k];
+          const pk = harm.phases[k];
+          for (let s=0;s<N;s++) {
+            const idx = s*K + k;
+            A[idx] = ak[s] || 0;
+            Phi[idx] = pk[s] || 0;
+          }
+        }
+
+        let simTime = 0; // seconds since epoch (UTC) — declared early so worker can reference
+        // Worker
+        const worker = new Worker('harmonic_worker.js', { type: 'module' });
+        let ready = false;
+        worker.postMessage({ type:'init', N, K, A, Phi, Omega });
+        const tlabel = document.getElementById('tlabel');
+        
+        // Debug UI
+        const debugBtn = document.createElement('button');
+        debugBtn.textContent = 'Inspect nearest';
+        debugBtn.style.marginLeft = '8px';
+        document.getElementById('ui').firstElementChild.appendChild(debugBtn);
+        
+        function latLonFromVec(x,y,z){
+          const r = Math.hypot(x,y,z) || 1;
+          const lat = Math.asin(y/r) * 180/Math.PI;
+          const lon = -Math.atan2(z, x) * 180/Math.PI; // invert to match render
+          return { lat, lon };
+        }
+        function nearestStationIndex(ray){
+          // project ray to sphere and find nearest point by angle (fast scan; N is small)
+          let best = -1, bestDot = -2;
+          for (let i=0;i<N;i++){
+            const b = i*3;
+            const vx = basePos[b], vy = basePos[b+1], vz = basePos[b+2];
+            const mag = Math.hypot(vx,vy,vz) || 1;
+            const nx = vx/mag, ny = vy/mag, nz = vz/mag;
+            const dot = ray.x*nx + ray.y*ny + ray.z*nz;
+            if (dot > bestDot){ bestDot = dot; best = i; }
+          }
+          return best;
+        }
+        debugBtn.onclick = ()=>{
+          // Use camera direction as probe for nearest station on front side
+          const dir = new THREE.Vector3();
+          camera.getWorldDirection(dir);
+          dir.normalize();
+          const s = nearestStationIndex(dir.negate()); // look-at direction toward sphere
+          if (s < 0) return;
+          const now = simTime;
+          worker.postMessage({ type:'compute_single', station: s, tSeconds: now });
+          console.log('[inspect] requested station', s, 'lat/lon', lats[s], lons[s]);
+        };
+        
+        worker.onmessage = (ev) => {
+          const { type } = ev.data || {};
+          if (type === 'ready') { 
+            ready = true; 
+            if (ev.data && typeof ev.data.phiIsDegrees === 'boolean') {
+              console.warn('Worker phases treated as', ev.data.phiIsDegrees ? 'degrees (auto-converted to radians)' : 'radians');
+            }
+            // Trigger initial compute to show points with proper colors
+            worker.postMessage({ type:'compute', tSeconds: simTime });
+          }
+          if (type === 'debug') {
+            const s = ev.data.station;
+            const lat = lats[s];
+            const lon = lons[s];
+            console.warn('Worker debug:', { ...ev.data, lat, lon });
+          }
+          if (type === 'single_debug') {
+            const s = ev.data.station;
+            if (ev.data.error) { console.warn('single_debug error', ev.data); return; }
+            const terms = new Float64Array(ev.data.terms);
+            const sum = ev.data.sum;
+            const detail = [];
+            for (let k=0;k<names.length;k++){
+              const Ak = harm.amplitudes[k][s];
+              const ph = harm.phases[k][s];
+              detail.push({ k, name: names[k], Ak, ph, term: terms[k] });
+            }
+            detail.sort((a,b)=>Math.abs(b.term)-Math.abs(a.term));
+            console.table(detail.slice(0,12));
+            console.log('[single_debug] station', s, 'lat/lon', lats[s], lons[s], 'sum=', sum, 'top terms above');
+          }
+          if (type === 'result') { applyElevations(ev.data.elevations); }
+        };
+
+        // Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias:true });
+        renderer.setSize(innerWidth, innerHeight);
+        document.body.appendChild(renderer.domElement);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        camera.position.set(0, 0, 16);
+        controls.update();
+
+        // Add lighting for better shading
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // soft ambient
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        const earthR = 6.37;
+        const ptsGeom = new THREE.BufferGeometry();
+        const vertices = [];
+        for (let i=0;i<N;i++) {
+          const lat = lats[i]*Math.PI/180;
+          const lon = -lons[i]*Math.PI/180; // flip for view
+          const x = earthR*Math.cos(lat)*Math.cos(lon);
+          const y = earthR*Math.sin(lat);
+          const z = earthR*Math.cos(lat)*Math.sin(lon);
+          vertices.push(x,y,z);
+        }
+        ptsGeom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        const colors = new Float32Array(N*3);
+        // Initialize all points to white so they're visible immediately
+        for (let i=0; i<N*3; i+=3) {
+          colors[i] = 1.0; colors[i+1] = 1.0; colors[i+2] = 1.0;
+        }
+        ptsGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        const points = new THREE.Points(ptsGeom, new THREE.PointsMaterial({
+          vertexColors:true,
+          size:0.08,
+          depthTest: true
+        }));
+        points.renderOrder = 5; // Render after tiles but still depth-tested by occluder
+        scene.add(points);
+        console.log(`Created ${N} points on sphere`);
+
+        // Amphidromic markers removed
+
+        // Occluder disc to hide back half of the globe
+        const occluderGeometry = new THREE.CircleGeometry(earthR + 0.1, 64);
+        const occluderMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+        const occluder = new THREE.Mesh(occluderGeometry, occluderMaterial);
+        occluder.renderOrder = 0;
+        scene.add(occluder);
+
+        const metersToUnits = earthR / 6371000;
+        const pointOffsetUnits = 0.02 * metersToUnits; // 2 cm outward so points stay visible over tiles
+        const basePos = ptsGeom.attributes.position.array.slice();
+        let isPlaying = true;
+        let fps = 16;
+        let exag = 200000;
+        let range = 0.4;
+        const playBtn = document.getElementById('play');
+        const pauseBtn = document.getElementById('pause');
+        const dtInput = document.getElementById('datetime');
+        const jumpBtn = document.getElementById('jump');
+        const fpsSlider = document.getElementById('fps');
+        const exagSlider = document.getElementById('exag');
+        const rangeSlider = document.getElementById('range');
+        
+        // Instanced tile extrusion (per-vertex thin boxes on the sphere)
+        const toRad = Math.PI/180;
+        const tileFill = 0.95; // fraction of cell coverage in lat/lon
+        const baseThicknessMeters = 0.25; // keep a thin visible base
+        const baseThicknessUnits = baseThicknessMeters * metersToUnits;
+        const surfaceOffsetUnits = 0.01 * metersToUnits; // ~1cm so points are just on top of tiles
+        const landWallMeters = 5000000; // land tiles extrude inward as a wall (make very tall to see)
+        const landWallUnits = landWallMeters * metersToUnits;
+        const minTileHeightMeters = 0.01; // avoid zero-height degeneracy
+        const minTileHeightUnits = minTileHeightMeters * metersToUnits;
+        let instancedTiles = null;
+        const tileAxisX = new Float32Array(N*3); // lon tangent per instance
+        const tileAxisY = new Float32Array(N*3); // normal per instance
+        const tileAxisZ = new Float32Array(N*3); // lat tangent per instance
+        const tileSizeX = new Float32Array(N);   // along lon
+        const tileSizeZ = new Float32Array(N);   // along lat
+        // Reusable temp objects
+        const tmpMat = new THREE.Matrix4();
+        const tmpQuat = new THREE.Quaternion();
+        const tmpScale = new THREE.Vector3();
+        const tmpPosV = new THREE.Vector3();
+        const axisX = new THREE.Vector3();
+        const axisY = new THREE.Vector3();
+        const axisZ = new THREE.Vector3();
+        
+        function uniqSorted(values){
+          // Round to 1e-6 to fold floating noise, then sort
+          return Array.from(new Set(values.map(v => +v.toFixed(6)))).sort((a,b)=>a-b);
+        }
+        function medianStep(sortedVals){
+          const diffs = [];
+          for (let i=1;i<sortedVals.length;i++) diffs.push(sortedVals[i]-sortedVals[i-1]);
+          if (!diffs.length) return 5; // deg fallback
+          diffs.sort((a,b)=>a-b);
+          return diffs[(diffs.length/2)|0];
+        }
+        function buildInstancedTiles(){
+          const uniqLats = uniqSorted(lats);
+          const uniqLons = uniqSorted(lons);
+          const dLat = medianStep(uniqLats);
+          const dLon = medianStep(uniqLons);
+          const minDim = 0.003; // scene units; clamps near poles
+          const boxGeom = new THREE.BoxGeometry(1,1,1);
+          // Add a white vertex color attribute to the base geometry.
+          // This prevents the instance color from being multiplied by a default black.
+          const n_verts = boxGeom.attributes.position.count;
+          const white = new Float32Array(n_verts * 3);
+          white.fill(1.0);
+          boxGeom.setAttribute('color', new THREE.BufferAttribute(white, 3));
+          const tileMat = new THREE.MeshLambertMaterial({
+            color: 0xffffff,
+            vertexColors: true,
+            transparent: false,
+            opacity: 1.0,
+            side: THREE.FrontSide,
+            wireframe: false
+          });
+          instancedTiles = new THREE.InstancedMesh(boxGeom, tileMat, N);
+          instancedTiles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        instancedTiles.renderOrder = 1; // Render after occluder but before points
+          // Create instance color attribute manually
+          const instanceColors = new Float32Array(N * 3);
+          for (let i = 0; i < N * 3; i += 3) {
+            instanceColors[i] = 1.0; instanceColors[i+1] = 1.0; instanceColors[i+2] = 1.0; // white default
+          }
+          instancedTiles.instanceColor = new THREE.InstancedBufferAttribute(instanceColors, 3);
+          instancedTiles.instanceColor.setUsage(THREE.DynamicDrawUsage);
+          scene.add(instancedTiles);
+
+          // Precompute axes and base sizes
+          const dLatRad = dLat * toRad;
+          const dLonRad = dLon * toRad;
+          for (let i=0;i<N;i++){
+            const latDeg = lats[i];
+            const lonDeg = lons[i];
+            const lat = latDeg * toRad;
+            const lon = -lonDeg * toRad; // match view flip
+
+            const cosLat = Math.cos(lat);
+            const sinLat = Math.sin(lat);
+            const cosLon = Math.cos(lon);
+            const sinLon = Math.sin(lon);
+
+            // Normal on sphere
+            const nx = cosLat*cosLon;
+            const ny = sinLat;
+            const nz = cosLat*sinLon;
+            // Tangents from spherical partial derivatives
+            const tx_lon_x = -cosLat*sinLon;
+            const tx_lon_y = 0;
+            const tx_lon_z =  cosLat*cosLon;
+            const tz_lat_x = -sinLat*cosLon;
+            const tz_lat_y =  cosLat;
+            const tz_lat_z = -sinLat*sinLon;
+
+            const base = i*3;
+            // Store normalized axes
+            let len;
+            // x axis (lon tangent)
+            len = Math.hypot(tx_lon_x, tx_lon_y, tx_lon_z) || 1;
+            tileAxisX[base] = tx_lon_x/len; tileAxisX[base+1] = tx_lon_y/len; tileAxisX[base+2] = tx_lon_z/len;
+            // y axis (normal)
+            len = Math.hypot(nx, ny, nz) || 1;
+            tileAxisY[base] = nx/len; tileAxisY[base+1] = ny/len; tileAxisY[base+2] = nz/len;
+            // z axis (lat tangent)
+            len = Math.hypot(tz_lat_x, tz_lat_y, tz_lat_z) || 1;
+            tileAxisZ[base] = tz_lat_x/len; tileAxisZ[base+1] = tz_lat_y/len; tileAxisZ[base+2] = tz_lat_z/len;
+
+            // Base footprint size in scene units (arc length)
+            const sizeX = Math.max(minDim, earthR * dLonRad * Math.max(0.0, cosLat) * tileFill);
+            const sizeZ = Math.max(minDim, earthR * dLatRad * tileFill);
+            tileSizeX[i] = sizeX;
+            tileSizeZ[i] = sizeZ;
+
+            // Initialize instance with thin base (height updated in applyElevations)
+            axisX.set(tileAxisX[base], tileAxisX[base+1], tileAxisX[base+2]);
+            axisY.set(tileAxisY[base], tileAxisY[base+1], tileAxisY[base+2]);
+            axisZ.set(tileAxisZ[base], tileAxisZ[base+1], tileAxisZ[base+2]);
+            tmpMat.makeBasis(axisX, axisY, axisZ);
+            tmpQuat.setFromRotationMatrix(tmpMat);
+            const b = base;
+            tmpPosV.set(basePos[b], basePos[b+1], basePos[b+2]);
+            tmpPosV.addScaledVector(axisY, baseThicknessUnits/2 - surfaceOffsetUnits);
+            tmpScale.set(sizeX, baseThicknessUnits, sizeZ);
+            tmpMat.compose(tmpPosV, tmpQuat, tmpScale);
+            instancedTiles.setMatrixAt(i, tmpMat);
+          }
+          instancedTiles.instanceMatrix.needsUpdate = true;
+        }
+        buildInstancedTiles();
+        // Initialize range from slider to keep in sync
+        range = parseFloat(rangeSlider.value);
+        playBtn.onclick = ()=>{isPlaying=true;};
+        pauseBtn.onclick = ()=>{isPlaying=false;};
+        fpsSlider.oninput = (e)=>{ fps = parseInt(e.target.value,10); };
+        exagSlider.oninput = (e)=>{
+          exag = parseInt(e.target.value,10);
+          console.log('Exaggeration set to:', exag);
+        };
+        rangeSlider.oninput = (e)=>{ range = parseFloat(e.target.value); };
+
+        const colorGold = new THREE.Color(0xffd700);
+        const colorWhite = new THREE.Color(0xffffff);
+        const colorBlue = new THREE.Color(0x0077ff);
+        const colorDeep = new THREE.Color(0x001b3a);
+        const colorGreen = new THREE.Color(0x00ff66);
+        const tmp = new THREE.Color();
+
+        // let simTime = 0; // moved earlier
+        let last = 0;
+        // Time controls: set an ISO start time
+        const startISO = new Date('2025-09-01T00:00:00Z');
+        const oneSecond = 1000;
+
+        function setSimTimeFromDate(dateObj){
+          simTime = (dateObj.getTime() - new Date('1970-01-01T00:00:00Z').getTime())/1000;
+        }
+        setSimTimeFromDate(startISO);
+        // Initialize datetime-local to the start time in local timezone
+        function toLocalDateTimeInputValue(d){
+          const pad = (n)=>String(n).padStart(2,'0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+        dtInput.value = toLocalDateTimeInputValue(startISO);
+        jumpBtn.onclick = ()=>{
+          // Interpret input as local time; convert to UTC seconds
+          const val = dtInput.value; // yyyy-mm-ddThh:mm:ss
+          if (!val) return;
+          const local = new Date(val.replace('T',' ') + ' UTC');
+          if (isNaN(local.getTime())) return;
+          setSimTimeFromDate(local);
+          // request immediate recompute at this time
+          worker.postMessage({ type:'compute', tSeconds: simTime });
+        };
+        function animate(ts){
+          requestAnimationFrame(animate);
+          if (!ready) { renderer.render(scene,camera); return; }
+          const dt = (ts - last) / 1000;
+          last = ts;
+          if (isPlaying) {
+            simTime += (3600 * (fps/12)) * dt; // advance ~fps hours per real second
+            worker.postMessage({ type:'compute', tSeconds: simTime });
+          }
+          controls.update();
+          occluder.lookAt(camera.position);
+          renderer.render(scene, camera);
+        }
+
+        let scaleLogged = false;
+        function applyElevations(elev){
+          // Update positions and colors
+          const colors = ptsGeom.attributes.color.array;
+          const pos = ptsGeom.attributes.position.array;
+          // Diagnostics: verify range usage
+          let rawMin = Infinity, rawMax = -Infinity;
+          let clampLow = 0, clampHigh = 0, finiteCount = 0;
+          for (let i=0;i<N;i++){
+            const e = elev[i];
+            // Add a sanity check for extreme values from the worker
+            if (Number.isFinite(e) && Math.abs(e) < 100) {
+              finiteCount++;
+              if (e < rawMin) rawMin = e;
+              if (e > rawMax) rawMax = e;
+              if (e <= -range) clampLow++;
+              if (e >=  range) clampHigh++;
+            } else {
+              elev[i] = NaN; // Mark as invalid if non-finite or extreme
+            }
+          }
+          if (!scaleLogged && Number.isFinite(rawMin) && Number.isFinite(rawMax)){
+            const typicalAmp = Math.abs(rawMax - rawMin) / 2;
+            console.log('[scale]', {
+              metersToUnits,
+              exag,
+              oneMeterUnits: metersToUnits,
+              oneMeterWithExag: metersToUnits * exag,
+              typicalAmpMeters: typicalAmp,
+              typicalDispUnits: typicalAmp * metersToUnits * exag
+            });
+            scaleLogged = true;
+          }
+
+          // Fixed baseline at -5.6m (empirically determined), scaled by exaggeration
+          const minElevUnits = -5.6 * metersToUnits * exag;
+
+          for (let i=0;i<N;i++){
+            const b = i*3;
+            // For land points, elevation is not applicable, but we need to set its color
+            // and ensure its position is on the base sphere.
+            if (land[i]) {
+              // Land vertices: always green
+              colors[b]=colorGreen.r; colors[b+1]=colorGreen.g; colors[b+2]=colorGreen.b;
+              const vx = basePos[b], vy = basePos[b+1], vz = basePos[b+2];
+              const mag0 = Math.hypot(vx,vy,vz) || 1;
+              const nx0 = vx/mag0, ny0 = vy/mag0, nz0 = vz/mag0;
+              pos[b] = vx + nx0*pointOffsetUnits; pos[b+1] = vy + ny0*pointOffsetUnits; pos[b+2] = vz + nz0*pointOffsetUnits;
+
+              // Instanced tile: land as downward wall (top at surface, extends inward to ocean minimum)
+              if (instancedTiles) {
+                const baseIdx = b;
+                axisX.set(tileAxisX[baseIdx], tileAxisX[baseIdx+1], tileAxisX[baseIdx+2]);
+                axisY.set(tileAxisY[baseIdx], tileAxisY[baseIdx+1], tileAxisY[baseIdx+2]);
+                axisZ.set(tileAxisZ[baseIdx], tileAxisZ[baseIdx+1], tileAxisZ[baseIdx+2]);
+                tmpMat.makeBasis(axisX, axisY, axisZ);
+                tmpQuat.setFromRotationMatrix(tmpMat);
+                // Top at surface, extends inward to current minimum tide level
+                const height = Math.max(baseThicknessUnits, -minElevUnits);
+                const centerOffset = minElevUnits / 2;
+                tmpPosV.set(basePos[b], basePos[b+1], basePos[b+2]);
+                tmpPosV.addScaledVector(axisY, centerOffset);
+                tmpScale.set(tileSizeX[i], height, tileSizeZ[i]);
+                tmpMat.compose(tmpPosV, tmpQuat, tmpScale);
+                instancedTiles.setMatrixAt(i, tmpMat);
+                const colorIdx = i * 3;
+                instancedTiles.instanceColor.array[colorIdx] = colorGreen.r;
+                instancedTiles.instanceColor.array[colorIdx+1] = colorGreen.g;
+                instancedTiles.instanceColor.array[colorIdx+2] = colorGreen.b;
+              }
+              continue;
+            }
+
+            const e = elev[i];
+            // Handle non-finite elevation data from the worker
+            if (!Number.isFinite(e)) {
+              // Set point to base position with offset
+              const vx = basePos[b], vy = basePos[b+1], vz = basePos[b+2];
+              const mag0 = Math.hypot(vx,vy,vz) || 1;
+              const nx0 = vx/mag0, ny0 = vy/mag0, nz0 = vz/mag0;
+              pos[b] = vx + nx0*pointOffsetUnits; pos[b+1] = vy + ny0*pointOffsetUnits; pos[b+2] = vz + nz0*pointOffsetUnits;
+              // Color point magenta to indicate error
+              colors[b] = 1; colors[b+1] = 0; colors[b+2] = 1;
+              // Hide the corresponding tile
+              if (instancedTiles) {
+                tmpScale.set(0,0,0);
+                instancedTiles.getMatrixAt(i, tmpMat);
+                tmpMat.decompose(tmpPosV, tmpQuat, new THREE.Vector3());
+                tmpMat.compose(tmpPosV, tmpQuat, tmpScale);
+                instancedTiles.setMatrixAt(i, tmpMat);
+              }
+              continue;
+            }
+
+            // For ocean points, apply displacement and color gradient
+            // Vertex points use the raw, unclamped elevation to show the full wave
+            const disp = e * metersToUnits * exag;
+            const vx = basePos[b], vy = basePos[b+1], vz = basePos[b+2];
+            const mag = Math.hypot(vx,vy,vz);
+            const nx = vx/mag, ny = vy/mag, nz = vz/mag;
+            pos[b] = vx + nx*(disp + pointOffsetUnits);
+            pos[b+1] = vy + ny*(disp + pointOffsetUnits);
+            pos[b+2] = vz + nz*(disp + pointOffsetUnits);
+  
+            // Colors and tiles use the clamped elevation for consistency with the UI range
+            const v = Math.max(-range, Math.min(range, e));
+            // White (min) -> Blue (zero) -> Gold (max)
+            if (v <= 0) {
+              let u = (v + range) / range; // -range..0 => 0..1
+              u = Math.sqrt(Math.max(0, Math.min(1, u)));
+              tmp.lerpColors(colorWhite, colorBlue, u);
+            } else {
+              let u = v / range; // 0..range => 0..1
+              u = Math.sqrt(Math.max(0, Math.min(1, u)));
+              tmp.lerpColors(colorBlue, colorGold, u);
+            }
+            colors[b]=tmp.r; colors[b+1]=tmp.g; colors[b+2]=tmp.b;
+
+            // Instanced tile: base at minimum (-range), height = (elev - min)
+            if (instancedTiles) {
+              const baseIdx = b;
+              axisX.set(tileAxisX[baseIdx], tileAxisX[baseIdx+1], tileAxisX[baseIdx+2]);
+              axisY.set(tileAxisY[baseIdx], tileAxisY[baseIdx+1], tileAxisY[baseIdx+2]);
+              axisZ.set(tileAxisZ[baseIdx], tileAxisZ[baseIdx+1], tileAxisZ[baseIdx+2]);
+              tmpMat.makeBasis(axisX, axisY, axisZ);
+              tmpQuat.setFromRotationMatrix(tmpMat);
+              // Use raw (unclamped) elevation for height to match points, but clamped value (v) for color
+              const dispUnits = e * metersToUnits * exag;
+              const height = dispUnits - minElevUnits;
+              
+              if (height <= 0) {
+                // Hide instance if it has no height to prevent a visible "floor"
+                tmpScale.set(0,0,0);
+                instancedTiles.getMatrixAt(i, tmpMat);
+                tmpMat.decompose(tmpPosV, tmpQuat, new THREE.Vector3());
+                tmpMat.compose(tmpPosV, tmpQuat, tmpScale);
+                instancedTiles.setMatrixAt(i, tmpMat);
+              } else {
+                const bottomOffset = minElevUnits; // place bottom at baseline minimum
+                const centerOffset = bottomOffset + height/2;
+                tmpPosV.set(basePos[b], basePos[b+1], basePos[b+2]);
+                tmpPosV.addScaledVector(axisY, centerOffset);
+                tmpScale.set(tileSizeX[i], height, tileSizeZ[i]);
+                tmpMat.compose(tmpPosV, tmpQuat, tmpScale);
+                instancedTiles.setMatrixAt(i, tmpMat);
+              }
+
+              // Ocean tiles: blue extrusion
+              const colorIdx = i * 3;
+              instancedTiles.instanceColor.array[colorIdx] = colorBlue.r;
+              instancedTiles.instanceColor.array[colorIdx+1] = colorBlue.g;
+              instancedTiles.instanceColor.array[colorIdx+2] = colorBlue.b;
+            }
+          }
+          ptsGeom.attributes.position.needsUpdate = true;
+          ptsGeom.attributes.color.needsUpdate = true;
+          if (instancedTiles) {
+            instancedTiles.instanceMatrix.needsUpdate = true;
+            instancedTiles.instanceColor.needsUpdate = true;
+          }
+          // Scale occluder to cover far-side extrusions but not interfere with low tides
+          const maxExtrusion = metersToUnits * range * exag; // maximum outward extrusion
+          const occlDesired = earthR + maxExtrusion + 0.1; // just enough to cover max extrusions
+          const occlScale = occlDesired / (earthR + 0.1);
+          occluder.scale.set(occlScale, occlScale, 1);
+          const d = new Date(simTime*1000);
+          const lowPct = finiteCount ? Math.round((clampLow/finiteCount)*100) : 0;
+          const highPct = finiteCount ? Math.round((clampHigh/finiteCount)*100) : 0;
+          tlabel.textContent = `${d.toISOString().replace('T',' ').replace('Z','Z')} | range=±${range.toFixed(2)}m raw=[${rawMin.toFixed(3)}, ${rawMax.toFixed(3)}] clamp=[-${lowPct}%, +${highPct}%]`;
+        }
+
+        animate(0);
+      }
+
+      main().catch(err => console.error("App failed to start:", err));
+    </script>
+  </body>
+  </html>
+
+
+
