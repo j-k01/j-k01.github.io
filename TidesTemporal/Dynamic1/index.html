@@ -26,8 +26,8 @@
         <button id="jump">Go</button>
         <span id="tlabel"></span>
       </div>
-      <label>FPS <input id="fps" type="range" min="1" max="60" value="16"/></label>
-      <label>Exag <input id="exag" type="range" min="10" max="1000000" step="100" value="200000"/></label>
+      <label>FPS <input id="fps" type="range" min="1" max="60" value="30"/></label>
+      <label>Exag <input id="exag" type="range" min="10" max="1000000" step="100" value="250000"/></label>
       <label>Range (m) <input id="range" type="range" min="0.1" max="1" step="0.01" value="0.4"/></label>
     </div>
     <script type="module">
@@ -135,10 +135,10 @@
         const tlabel = document.getElementById('tlabel');
         
         // Debug UI
-        const debugBtn = document.createElement('button');
-        debugBtn.textContent = 'Inspect nearest';
-        debugBtn.style.marginLeft = '8px';
-        document.getElementById('ui').firstElementChild.appendChild(debugBtn);
+        // const debugBtn = document.createElement('button');
+        // debugBtn.textContent = 'Inspect nearest';
+        // debugBtn.style.marginLeft = '8px';
+        // document.getElementById('ui').firstElementChild.appendChild(debugBtn);
         
         function latLonFromVec(x,y,z){
           const r = Math.hypot(x,y,z) || 1;
@@ -159,17 +159,17 @@
           }
           return best;
         }
-        debugBtn.onclick = ()=>{
-          // Use camera direction as probe for nearest station on front side
-          const dir = new THREE.Vector3();
-          camera.getWorldDirection(dir);
-          dir.normalize();
-          const s = nearestStationIndex(dir.negate()); // look-at direction toward sphere
-          if (s < 0) return;
-          const now = simTime;
-          worker.postMessage({ type:'compute_single', station: s, tSeconds: now });
-          console.log('[inspect] requested station', s, 'lat/lon', lats[s], lons[s]);
-        };
+        // debugBtn.onclick = ()=>{
+        //   // Use camera direction as probe for nearest station on front side
+        //   const dir = new THREE.Vector3();
+        //   camera.getWorldDirection(dir);
+        //   dir.normalize();
+        //   const s = nearestStationIndex(dir.negate()); // look-at direction toward sphere
+        //   if (s < 0) return;
+        //   const now = simTime;
+        //   worker.postMessage({ type:'compute_single', station: s, tSeconds: now });
+        //   console.log('[inspect] requested station', s, 'lat/lon', lats[s], lons[s]);
+        // };
         
         worker.onmessage = (ev) => {
           const { type } = ev.data || {};
@@ -262,8 +262,8 @@
         const pointOffsetUnits = 0.02 * metersToUnits; // 2 cm outward so points stay visible over tiles
         const basePos = ptsGeom.attributes.position.array.slice();
         let isPlaying = true;
-        let fps = 16;
-        let exag = 200000;
+        let fps = 30;
+        let exag = 250000;
         let range = 0.4;
         const playBtn = document.getElementById('play');
         const pauseBtn = document.getElementById('pause');
@@ -629,8 +629,10 @@
           const d = new Date(simTime*1000);
           const lowPct = finiteCount ? Math.round((clampLow/finiteCount)*100) : 0;
           const highPct = finiteCount ? Math.round((clampHigh/finiteCount)*100) : 0;
-          tlabel.textContent = `${d.toISOString().replace('T',' ').replace('Z','Z')} | range=±${range.toFixed(2)}m raw=[${rawMin.toFixed(3)}, ${rawMax.toFixed(3)}] clamp=[-${lowPct}%, +${highPct}%]`;
-        }
+          tlabel.textContent = `${d.toISOString().replace('T',' ').replace('Z','Z')}`;
+          //tlable.textContent = `${d.toISOString().replace('T',' ').replace('Z','Z')}`
+          ;
+      }
 
         animate(0);
       }
