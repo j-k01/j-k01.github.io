@@ -26,34 +26,19 @@
         <button id="jump">Go</button>
         <span id="tlabel"></span>
       </div>
-      <div>
-        <button id="switchDemo">Switch to High Res</button>
-      </div>
       <label>FPS <input id="fps" type="range" min="1" max="60" value="31"/></label>
       <label>Exag <input id="exag" type="range" min="10" max="10000" step="5" value="3505"/></label>
       <label>Range (m) <input id="range" type="range" min="0.1" max="50" step="0.1" value="50"/></label>
-      <label>Vertex Size <input id="vertexSize" type="range" min="0.01" max="0.5" step="0.01" value="0.08"/></label>
+      <label>Greenness <input id="green" type="range" min="0" max="1" step="0.01" value="0"/></label>
     </div>
     <script type="module">
       import * as THREE from 'three';
       import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/controls/OrbitControls.js';
 
       async function main() {
-        // Load real harmonics exported from GOT5.5/5.6 with selectable dataset
-        let currentDataset = 'harmonics_demo.json';
-        let isHighRes = false;
-        // Restore selection from previous session if available
-        try {
-          const savedDs = localStorage.getItem('tides.dataset');
-          const savedHr = localStorage.getItem('tides.isHighRes');
-          if (savedDs) currentDataset = savedDs;
-          if (savedHr !== null) isHighRes = (savedHr === 'true');
-        } catch (e) {
-          // localStorage may be unavailable; ignore
-        }
-        
-        async function loadHarm(filename = null){
-          const url = filename || currentDataset;
+        // Load real harmonics exported from GOT5.5/5.6
+        async function loadHarm(){
+          const url = 'harmonics_demo.json';
           try {
             const r = await fetch(url, { cache: 'no-cache' });
             if (r.ok) {
@@ -68,9 +53,9 @@
             return null;
           }
         }
-        let harm = await loadHarm();
+        const harm = await loadHarm();
         if (!harm) {
-          const msg = 'Failed to load harmonics data (tried harmonics_demo.json and harmonics_dem_lando.json). Generate it via: python scripts/export_harmonics.py --tides-root . --lat-step 5 --lon-step 5 --output web/harmonics_demo.json';
+          const msg = 'Failed to load harmonics data';
           console.error(msg);
           const div = document.createElement('div');
           div.textContent = msg;
@@ -85,12 +70,12 @@
           return; // Stop execution if no data
         }
 
-        let lats = harm.latitudes;
-        let lons = harm.longitudes;
-        let N = lats.length;
-        let names = harm.meta.constituents;
-        let K = names.length;
-        let land = harm.land_mask || new Array(N).fill(false);
+        const lats = harm.latitudes;
+        const lons = harm.longitudes;
+        const N = lats.length;
+        const names = harm.meta.constituents;
+        const K = names.length;
+        const land = harm.land_mask || new Array(N).fill(false);
 
         // Convert to typed arrays and compute angular speeds from periods (use simplified Doodson where known or fallback approx).
         // For now, accept a static mapping for common constituents; others default to zero (static phase contribution).
@@ -99,15 +84,15 @@
           'P1': 24.065889, 'Q1': 26.868356, 'M4': 6.2103006, 'MS4': 6.0, 'S1': 24.0, 'OO1': 22.30608, 'SIG1': 22.3972,
           '2N2': 12.905374, 'J1': 23.0985, 'M3': 8.2804008
         };
-        let Omega = new Float64Array(K);
+        const Omega = new Float64Array(K);
         for (let k=0;k<K;k++) {
           const name = names[k].toUpperCase();
           const ph = periodHours[name];
           Omega[k] = ph ? (2*Math.PI/(ph*3600)) : 0.0;
         }
         // Flatten amplitudes/phases into typed arrays (amplitudes: meters; phases: radians)
-        let A = new Float32Array(N*K);
-        let Phi = new Float32Array(N*K);
+        const A = new Float32Array(N*K);
+        const Phi = new Float32Array(N*K);
         for (let k=0;k<K;k++) {
           const ak = harm.amplitudes[k];
           const pk = harm.phases[k];
@@ -119,23 +104,17 @@
         }
 
         // Worker
-        let worker = new Worker('harmonic_worker.js', { type: 'module' });
+        const worker = new Worker('harmonic_worker.js', { type: 'module' });
         let ready = false;
-        function initWorker(){
-          if (worker) try { worker.terminate(); } catch(e){}
-          ready = false;
-          worker = new Worker('harmonic_worker.js', { type: 'module' });
-          worker.postMessage({ type:'init', N, K, A, Phi, Omega });
-          worker.onmessage = (ev) => {
-            const { type } = ev.data || {};
-            if (type === 'ready') { 
-              ready = true; 
-              worker.postMessage({ type:'compute', tSeconds: simTime });
-            }
-            if (type === 'result') { applyElevations(ev.data.elevations); }
-          };
-        }
-        initWorker();
+        worker.postMessage({ type:'init', N, K, A, Phi, Omega });
+        worker.onmessage = (ev) => {
+          const { type } = ev.data || {};
+          if (type === 'ready') { 
+            ready = true; 
+            worker.postMessage({ type:'compute', tSeconds: simTime });
+          }
+          if (type === 'result') { applyElevations(ev.data.elevations); }
+        };
 
         // Three.js scene
         const scene = new THREE.Scene();
@@ -165,7 +144,7 @@
           colors[i] = 1.0; colors[i+1] = 1.0; colors[i+2] = 1.0;
         }
         ptsGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        let vertexSize = isHighRes ? 0.03 : 0.08;
+        const vertexSize = 0.08;
         const pointsMaterial = new THREE.PointsMaterial({ vertexColors:true, size:vertexSize });
         const points = new THREE.Points(ptsGeom, pointsMaterial);
         scene.add(points);
@@ -178,7 +157,7 @@
         scene.add(occluder);
 
         const metersToUnits = earthR / 6371000;
-        let basePos = ptsGeom.attributes.position.array.slice();
+        const basePos = ptsGeom.attributes.position.array.slice();
         let isPlaying = true;
         let fps = 12;
         let exag = 5000;
@@ -190,14 +169,10 @@
         const fpsSlider = document.getElementById('fps');
         const exagSlider = document.getElementById('exag');
         const rangeSlider = document.getElementById('range');
-        const vertexSizeSlider = document.getElementById('vertexSize');
-        const switchDemoBtn = document.getElementById('switchDemo');
-        // Reflect current dataset in UI and vertex size
-        switchDemoBtn.textContent = isHighRes ? 'Switch to Standard' : 'Switch to High Res';
+        const greenSlider = document.getElementById('green');
         const tlabel = document.getElementById('tlabel');
         // Initialize range from slider to keep in sync
         range = parseFloat(rangeSlider.value);
-        vertexSizeSlider.value = String(vertexSize);
         // Initialize fps and exag from sliders (defaults set in HTML)
         fps = parseInt(fpsSlider.value,10);
         exag = parseInt(exagSlider.value,10);
@@ -206,95 +181,36 @@
         fpsSlider.oninput = (e)=>{ fps = parseInt(e.target.value,10); };
         exagSlider.oninput = (e)=>{ exag = parseInt(e.target.value,10); };
         rangeSlider.oninput = (e)=>{ range = parseFloat(e.target.value); };
-        vertexSizeSlider.oninput = (e)=>{ 
-          vertexSize = parseFloat(e.target.value); 
-          pointsMaterial.size = vertexSize;
-        };
-        
-        // Swap dataset in-place: rebuild arrays, geometry, and worker
-        async function applyDataset(newHarm){
-          harm = newHarm;
-          lats = harm.latitudes;
-          lons = harm.longitudes;
-          N = lats.length;
-          names = harm.meta.constituents;
-          K = names.length;
-          land = harm.land_mask || new Array(N).fill(false);
 
-          // Recompute Omega
-          Omega = new Float64Array(K);
-          for (let k=0;k<K;k++) {
-            const name = names[k].toUpperCase();
-            const ph = periodHours[name];
-            Omega[k] = ph ? (2*Math.PI/(ph*3600)) : 0.0;
-          }
-
-          // Rebuild A/Phi
-          A = new Float32Array(N*K);
-          Phi = new Float32Array(N*K);
-          for (let k=0;k<K;k++) {
-            const ak = harm.amplitudes[k];
-            const pk = harm.phases[k];
-            for (let s=0;s<N;s++) {
-              const idx = s*K + k;
-              A[idx] = ak[s] || 0;
-              Phi[idx] = pk[s] || 0;
+        function updateLandColors() {
+          if (!ptsGeom) return;
+          const colors = ptsGeom.attributes.color.array;
+          for (let i = 0; i < N; i++) {
+            if (land[i]) {
+              const b = i * 3;
+              const lat = lats[i];
+              if (Math.abs(lat) >= 66.5) {
+                colors[b]=colorWhite.r; colors[b+1]=colorWhite.g; colors[b+2]=colorWhite.b;
+              } else {
+                colors[b] = colorGreen.r;
+                colors[b+1] = colorGreen.g;
+                colors[b+2] = colorGreen.b;
+              }
             }
           }
-
-          // Rebuild geometry
-          const verts = [];
-          for (let i=0;i<N;i++) {
-            const lat = lats[i]*Math.PI/180;
-            const lon = -lons[i]*Math.PI/180;
-            const x = earthR*Math.cos(lat)*Math.cos(lon);
-            const y = earthR*Math.sin(lat);
-            const z = earthR*Math.cos(lat)*Math.sin(lon);
-            verts.push(x,y,z);
-          }
-          const newGeom = new THREE.BufferGeometry();
-          newGeom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-          const newColors = new Float32Array(N*3);
-          for (let i=0;i<N*3;i+=3) { newColors[i]=1; newColors[i+1]=1; newColors[i+2]=1; }
-          newGeom.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
-          // Swap
-          ptsGeom.dispose();
-          ptsGeom = newGeom;
-          points.geometry = ptsGeom;
-          basePos = ptsGeom.attributes.position.array.slice();
-
-          // Re-init worker with new arrays
-          initWorker();
+          if (ptsGeom.attributes.color) ptsGeom.attributes.color.needsUpdate = true;
         }
 
-        // Switch demo button handler
-        switchDemoBtn.onclick = ()=>{
-          (async ()=>{
-            isHighRes = !isHighRes;
-            currentDataset = isHighRes ? 'harmonics_dem_lando.json' : 'harmonics_demo.json';
-            try {
-              localStorage.setItem('tides.dataset', currentDataset);
-              localStorage.setItem('tides.isHighRes', String(isHighRes));
-            } catch (e) {}
-            switchDemoBtn.textContent = isHighRes ? 'Switch to Standard' : 'Switch to High Res';
-            if (isHighRes) {
-              vertexSize = 0.03;
-            } else {
-              vertexSize = 0.08;
-            }
-            vertexSizeSlider.value = String(vertexSize);
-            pointsMaterial.size = vertexSize;
-            const newHarm = await loadHarm(currentDataset);
-            if (newHarm) {
-              await applyDataset(newHarm);
-            }
-          })();
+        greenSlider.oninput = (e) => {
+          colorGreen.g = parseFloat(e.target.value);
+          updateLandColors();
         };
 
         const colorGold = new THREE.Color(0xffd700);
         const colorWhite = new THREE.Color(0xffffff);
         const colorBlue = new THREE.Color(0x0077ff);
-        const colorGreen = new THREE.Color(0x00ff66);
+        let colorGreen = new THREE.Color(0x000066);
+        const colorDeep = new THREE.Color(0x001b3a);
         const tmp = new THREE.Color();
 
         let simTime = 0; // seconds since epoch (UTC)
@@ -378,7 +294,7 @@
             pos[b+2] = vz + nz*disp;
 
             const v = Math.max(-range, Math.min(range, elev[i]));
-            // White (low) -> Blue (zero) -> Gold (high)
+            // White (low) -> Blue (zero) -> Dark Blue (high)
             if (v <= 0) {
               let u = (v + range) / range; // -range..0 => 0..1
               // slight ease for smoothness
@@ -387,7 +303,7 @@
             } else {
               let u = v / range; // 0..range => 0..1
               u = Math.sqrt(Math.max(0, Math.min(1, u)));
-              tmp.lerpColors(colorBlue, colorGold, u);
+              tmp.lerpColors(colorBlue, colorDeep, u);
             }
             colors[b]=tmp.r; colors[b+1]=tmp.g; colors[b+2]=tmp.b;
           }

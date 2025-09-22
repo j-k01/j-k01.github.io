@@ -13,50 +13,229 @@
     </script>
     <style>
       html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: Arial, sans-serif; }
-      #ui { position: fixed; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 4px; }
-      #ui label { display:block; margin:4px 0; }
+      #ui { position: fixed; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 4px; z-index: 10; }
+
+      #ui > div { margin-bottom: 5px; }
+      #tlabel {
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+        vertical-align: middle;
+        margin-left: 10px;
+      }
+
+      #ui button.inverted,
+      #ui button.active-colorway {
+        background: #00aaff;
+        color: #000;
+      }
+
+      #ui button, #ui input[type="button"] {
+        background: transparent;
+        border: 1px solid #00aaff;
+        color: #00aaff;
+        padding: 3px 8px;
+        margin: 2px;
+        cursor: pointer;
+        border-radius: 3px;
+        font-family: 'Courier New', Courier, monospace;
+        font-weight: bold;
+        transition: background 0.2s, color 0.2s;
+        vertical-align: middle;
+      }
+      #ui button:hover, #ui input[type="button"]:hover {
+        background: #00aaff;
+        color: #000;
+      }
+
+      #lock-light-btn {
+        width: 160px; /* Fixed width to prevent resize on text change */
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      #time-box {
+        display: inline-block;
+        border: 1px solid #00aaff;
+        border-radius: 3px;
+        padding: 4px;
+        vertical-align: middle;
+      }
+      #time-box:hover {
+        border-color: #fff;
+      }
+      #time-box input[type="datetime-local"] {
+        border: none;
+        padding: 0;
+        margin: 0;
+        background: transparent;
+        color: #fff;
+        font-family: 'Courier New', Courier, monospace;
+      }
+
+      input[type=range] {
+        -webkit-appearance: none;
+        background: transparent;
+        width: 150px;
+        margin: 1px 0;
+        vertical-align: middle;
+      }
+      input[type=range]:focus {
+        outline: none;
+      }
+
+      /* Webkit */
+      input[type=range]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 12px;
+        cursor: pointer;
+        background: linear-gradient(to right, #005588 0%, #005588 var(--value-percent, 0%), rgba(0, 50, 80, 0.5) var(--value-percent, 0%), rgba(0, 50, 80, 0.5) 100%);
+        border-radius: 2px;
+        border: 1px solid #00aaff;
+      }
+
+      input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        border: 1px solid #00aaff;
+        height: 12px;
+        width: 6px;
+        border-radius: 1px;
+        background: #00aaff;
+        cursor: pointer;
+        margin-top: -1px;
+      }
+
+      /* Firefox */
+      input[type=range]::-moz-range-track {
+        width: 100%;
+        height: 12px;
+        cursor: pointer;
+        background: linear-gradient(to right, #005588 0%, #005588 var(--value-percent, 0%), rgba(0, 50, 80, 0.5) var(--value-percent, 0%), rgba(0, 50, 80, 0.5) 100%);
+        border-radius: 2px;
+        border: 1px solid #00aaff;
+      }
+
+      input[type=range]::-moz-range-thumb {
+        border: 1px solid #00aaff;
+        height: 12px;
+        width: 6px;
+        border-radius: 1px;
+        background: #00aaff;
+        cursor: pointer;
+      }
+
+      #ui input[type="datetime-local"], #ui input[type="text"] {
+        background: transparent;
+        border: 1px solid #00aaff;
+        color: #fff;
+        padding: 4px;
+        border-radius: 3px;
+        font-family: 'Courier New', Courier, monospace;
+      }
+      
+      #ui label {
+        display: block;
+        margin: 2px 0;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+      }
+
+      .slider-label {
+        display: inline-block;
+        width: 45px;
+        text-align: left;
+        margin-right: 2px;
+      }
+
+      #invert-btn {
+        width: 100%;
+        padding-top: 1px;
+        padding-bottom: 1px;
+        letter-spacing: 2px;
+        transform: scaleY(0.8);
+      }
+
+      #controls-container {
+        display: inline-block;
+      }
     </style>
   </head>
   <body>
     <div id="ui">
       <div>
+        <div id="time-box">
+          <input id="datetime" type="datetime-local" step="1" />
+        </div>
+        <button id="jump">Go</button>
+      </div>
+      <div>
         <button id="play">Play</button>
         <button id="pause">Pause</button>
-        <input id="datetime" type="datetime-local" step="1" />
-        <button id="jump">Go</button>
         <span id="tlabel"></span>
       </div>
-      <label>FPS <input id="fps" type="range" min="1" max="60" value="30"/></label>
-      <label>Exag <input id="exag" type="range" min="10" max="1000000" step="100" value="250000"/></label>
-      <label>Range (m) <input id="range" type="range" min="0.1" max="1" step="0.01" value="0.4"/></label>
-      <label><input id="lock-light" type="checkbox" checked /> Lock Light</label>
+      <label><span class="slider-label">Speed</span><input id="fps" type="range" min="1" max="60" value="20"/></label>
+      <label><span class="slider-label">Exag</span><input id="exag" type="range" min="10" max="1000000" step="100" value="250000"/></label>
+      <label style="display: none;">Range (m) <input id="range" type="range" min="0.1" max="1" step="0.01" value="0.4"/></label>
+      <label style="display: none;">Goldness <input id="gold" type="range" min="0" max="1" step="0.01" value="0"/></label>
+      <label style="display: none;">Ocean Glow <input id="ocean-glow" type="range" min="0" max="1" step="0.01" value="0.15"/></label>
+      <div style="display: none;">
+        <button id="lock-light-btn">☀️ Follow Camera</button>
+      </div>
+      <div id="controls-container">
+        <div>
+          <button id="invert-btn">Show Land</button>
+        </div>
+        <div>
+          <button id="colorway-oceanic" class="active-colorway">Oceanic</button>
+          <button id="colorway-digital">Digital</button>
+          <button id="colorway-algae">Ember Zoa</button>
+        </div>
+      </div>
     </div>
+
+    <script type="x-shader/x-vertex" id="vertexshader">
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+      }
+    </script>
+    <script type="x-shader/x-fragment" id="fragmentshader">
+      uniform sampler2D baseTexture;
+      uniform sampler2D bloomTexture;
+      varying vec2 vUv;
+      void main() {
+        gl_FragColor = ( texture2D( baseTexture, vUv ) + vec4( 1.0 ) * texture2D( bloomTexture, vUv ) );
+      }
+    </script>
+
     <script type="module">
       import * as THREE from 'three';
       import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/controls/OrbitControls.js';
+      import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/postprocessing/EffectComposer.js';
+      import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/postprocessing/RenderPass.js';
+      import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/postprocessing/UnrealBloomPass.js';
+      import { ShaderPass } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/postprocessing/ShaderPass.js';
 
       async function main() {
-        // Load real harmonics exported from GOT5.5/5.6 with fallback filenames
+        // Load real harmonics exported from GOT5.5/5.6
         async function loadHarm(){
-          const candidates = ['harmonics_demo.json', 'harmonics_dem_lando.json'];
-          for (const url of candidates){
-            try {
-              const r = await fetch(url, { cache: 'no-cache' });
-              if (r.ok) {
-                console.log('Loaded harmonics from', url);
-                return await r.json();
-              } else {
-                console.warn('Failed to load', url, r.status, r.statusText);
-              }
-            } catch (e) {
-              console.warn('Error fetching', url, e);
+          const url = 'harmonics_demo.json';
+          try {
+            const r = await fetch(url, { cache: 'no-cache' });
+            if (r.ok) {
+              console.log('Loaded harmonics from', url);
+              return await r.json();
+            } else {
+              console.warn('Failed to load', url, r.status, r.statusText);
             }
+          } catch (e) {
+            console.warn('Error fetching', url, e);
           }
           return null;
         }
         const harm = await loadHarm();
         if (!harm) {
-          const msg = 'Failed to load harmonics data (tried harmonics_demo.json and harmonics_dem_lando.json). Generate it via: python scripts/export_harmonics.py --tides-root . --lat-step 5 --lon-step 5 --output web/harmonics_demo.json';
+          const msg = 'Failed to load harmonics data';
           console.error(msg);
           const div = document.createElement('div');
           div.textContent = msg;
@@ -212,8 +391,59 @@
         const renderer = new THREE.WebGLRenderer({ antialias:true });
         renderer.setSize(innerWidth, innerHeight);
         document.body.appendChild(renderer.domElement);
+
+        const renderPass = new RenderPass( scene, camera );
+        const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
+        bloomPass.threshold = 0;
+        bloomPass.strength = 1.0;
+        bloomPass.radius = 0.4;
+
+        const bloomComposer = new EffectComposer( renderer );
+        bloomComposer.renderToScreen = false;
+        bloomComposer.addPass( renderPass );
+        bloomComposer.addPass( bloomPass );
+        
+        const finalPass = new ShaderPass(
+          new THREE.ShaderMaterial( {
+            uniforms: {
+              baseTexture: { value: null },
+              bloomTexture: { value: bloomComposer.renderTarget2.texture }
+            },
+            vertexShader: document.getElementById( 'vertexshader' ).textContent,
+            fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
+            defines: {}
+          } ), 'baseTexture'
+        );
+        finalPass.needsSwap = true;
+
+        const finalComposer = new EffectComposer( renderer );
+        finalComposer.addPass( renderPass );
+        finalComposer.addPass( finalPass );
+
+
         const controls = new OrbitControls(camera, renderer.domElement);
-        camera.position.set(0, 0, 16);
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.2;
+
+        const stopAutoRotate = () => {
+          if (controls.autoRotate) {
+            controls.autoRotate = false;
+            renderer.domElement.removeEventListener('pointerdown', stopAutoRotate);
+            renderer.domElement.removeEventListener('wheel', stopZooming);
+          }
+        };
+
+        const stopZooming = () => {
+            // This function does nothing but is used to remove the wheel listener
+        };
+
+        renderer.domElement.addEventListener('pointerdown', stopAutoRotate, { once: true });
+        renderer.domElement.addEventListener('wheel', stopZooming, { once: true });
+
+
+        const distance = 14;
+        const angle = 20 * Math.PI / 180; // 20 degrees in radians
+        camera.position.set(0, distance * Math.sin(angle), distance * Math.cos(angle));
         controls.update();
 
         // Add lighting for better shading
@@ -222,6 +452,9 @@
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(1, 1, 1).normalize();
         scene.add(directionalLight);
+
+        const cameraInverseMatrix = camera.matrixWorld.clone().invert();
+        const lightOffsetDirection = directionalLight.position.clone().transformDirection(cameraInverseMatrix);
 
         const earthR = 6.37;
         const ptsGeom = new THREE.BufferGeometry();
@@ -263,7 +496,7 @@
         const pointOffsetUnits = 0.02 * metersToUnits; // 2 cm outward so points stay visible over tiles
         const basePos = ptsGeom.attributes.position.array.slice();
         let isPlaying = true;
-        let fps = 30;
+        let fps = 20;
         let exag = 250000;
         let range = 0.4;
         const playBtn = document.getElementById('play');
@@ -273,11 +506,96 @@
         const fpsSlider = document.getElementById('fps');
         const exagSlider = document.getElementById('exag');
         const rangeSlider = document.getElementById('range');
-        const lockLightCheckbox = document.getElementById('lock-light');
+        const goldSlider = document.getElementById('gold');
+        const oceanGlowSlider = document.getElementById('ocean-glow');
+        const lockLightBtn = document.getElementById('lock-light-btn');
+        const invertBtn = document.getElementById('invert-btn');
         
-        let isLightLocked = true;
-        lockLightCheckbox.onchange = (e) => {
-          isLightLocked = e.target.checked;
+        let isLightLocked = false;
+        lockLightBtn.textContent = isLightLocked ? '☀️ Follow Camera' : 'Lock ☀️';
+        let oceanGlow = 0.0;
+        let isLandShown = false;
+        let currentTween = null;
+        let currentTimeTween = null;
+
+        function tweenValues(targets, duration) {
+          if (currentTween) cancelAnimationFrame(currentTween);
+        
+          const startValues = {};
+          const endValues = {};
+          for (const key in targets) {
+            startValues[key] = parseFloat(targets[key].slider.value);
+            endValues[key] = targets[key].endValue;
+          }
+        
+          const startTime = performance.now();
+        
+          function animateTween() {
+            const elapsedTime = performance.now() - startTime;
+            let progress = elapsedTime / duration;
+            if (progress > 1) progress = 1;
+        
+            for (const key in targets) {
+              const slider = targets[key].slider;
+              const start = startValues[key];
+              const end = endValues[key];
+              const newValue = start + (end - start) * progress; // Linear interpolation
+              slider.value = newValue;
+              slider.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        
+            if (progress < 1) {
+              currentTween = requestAnimationFrame(animateTween);
+            } else {
+              currentTween = null;
+            }
+          }
+          currentTween = requestAnimationFrame(animateTween);
+        }
+
+        function tweenSimTime(targetSimTime, duration) {
+          if (currentTimeTween) cancelAnimationFrame(currentTimeTween);
+          const wasPlaying = isPlaying;
+          isPlaying = false; // Pause simulation during time travel
+
+          const startSimTime = simTime;
+          const startTime = performance.now();
+
+          function animateTimeTween() {
+              const elapsedTime = performance.now() - startTime;
+              let progress = elapsedTime / duration;
+              if (progress > 1) progress = 1;
+
+              simTime = startSimTime + (targetSimTime - startSimTime) * progress;
+              
+              // update the visualization and UI time label
+              worker.postMessage({ type:'compute', tSeconds: simTime });
+              
+              if (progress < 1) {
+                  currentTimeTween = requestAnimationFrame(animateTimeTween);
+              } else {
+                  currentTimeTween = null;
+                  isPlaying = wasPlaying; // Resume playing if it was active before
+              }
+          }
+          currentTimeTween = requestAnimationFrame(animateTimeTween);
+        }
+
+        invertBtn.onclick = () => {
+          isLandShown = !isLandShown;
+          invertBtn.classList.toggle('inverted', isLandShown);
+
+          const targets = {
+              gold: { slider: goldSlider, endValue: isLandShown ? 0.33 : 0 },
+              ocean: { slider: oceanGlowSlider, endValue: isLandShown ? 0 : 0.15 }
+          };
+
+          tweenValues(targets, 1000);
+        };
+
+        lockLightBtn.onclick = (e) => {
+          isLightLocked = !isLightLocked;
+          lockLightBtn.textContent = isLightLocked ? '☀️ Follow Camera' : 'Lock ☀️';
         };
         // Instanced tile extrusion (per-vertex thin boxes on the sphere)
         const toRad = Math.PI/180;
@@ -413,18 +731,162 @@
         range = parseFloat(rangeSlider.value);
         playBtn.onclick = ()=>{isPlaying=true;};
         pauseBtn.onclick = ()=>{isPlaying=false;};
-        fpsSlider.oninput = (e)=>{ fps = parseInt(e.target.value,10); };
+        fpsSlider.oninput = (e)=>{ 
+          fps = parseInt(e.target.value,10); 
+        };
         exagSlider.oninput = (e)=>{
           exag = parseInt(e.target.value,10);
-          console.log('Exaggeration set to:', exag);
         };
-        rangeSlider.oninput = (e)=>{ range = parseFloat(e.target.value); };
+        rangeSlider.oninput = (e)=>{ 
+          range = parseFloat(e.target.value); 
+        };
 
-        const colorGold = new THREE.Color(0xffd700);
-        const colorWhite = new THREE.Color(0xffffff);
-        const colorBlue = new THREE.Color(0x0077ff);
-        const colorDeep = new THREE.Color(0x001b3a);
-        const colorGreen = new THREE.Color(0x00ff66);
+        function updateSliderFill(slider) {
+          const min = slider.min || 0;
+          const max = slider.max || 100;
+          const value = slider.value;
+          const percent = ((value - min) / (max - min)) * 100;
+          slider.style.setProperty('--value-percent', `${percent}%`);
+        }
+
+        document.querySelectorAll('input[type=range]').forEach(slider => {
+          updateSliderFill(slider);
+          slider.addEventListener('input', () => updateSliderFill(slider));
+        });
+
+        // Set initial state
+        goldSlider.dispatchEvent(new Event('input', { bubbles: true }));
+        oceanGlowSlider.dispatchEvent(new Event('input', { bubbles: true }));
+
+        function updateLandColors() {
+          if (!ptsGeom || !instancedTiles) return;
+          const colors = ptsGeom.attributes.color.array;
+          const instanceColors = instancedTiles.instanceColor.array;
+          for (let i = 0; i < N; i++) {
+            if (land[i]) {
+              const b = i * 3;
+              colors[b] = colorLand.r;
+              colors[b+1] = colorLand.g;
+              colors[b+2] = colorLand.b;
+              if (instancedTiles.instanceColor) {
+                instanceColors[b] = colorLand.r;
+                instanceColors[b+1] = colorLand.g;
+                instanceColors[b+2] = colorLand.b;
+              }
+            }
+          }
+          if (ptsGeom.attributes.color) ptsGeom.attributes.color.needsUpdate = true;
+          if (instancedTiles.instanceColor) instancedTiles.instanceColor.needsUpdate = true;
+        }
+
+        goldSlider.oninput = (e) => {
+          const goldness = parseFloat(e.target.value);
+          colorLand.lerpColors(landColorBase, colorGold, goldness);
+          updateLandColors();
+        };
+
+        oceanGlowSlider.oninput = (e) => {
+          oceanGlow = parseFloat(e.target.value);
+        };
+
+        const colorways = {
+          original: {
+            white: 0xffffff,
+            blue: 0x0077ff,
+            deep: 0x483D8B,
+            landBase: 0x000066,
+            gold: 0xffd700,
+          },
+          oceanic: {
+            white: 0xffffff,
+            blue: 0x0077ff,
+            deep: 0x001b3a,
+            landBase: 0x000066,
+            gold: 0xffd700,
+          },
+          oceanic2: {
+            white: 0xE0FFFF,
+            blue: 0x40E0D0,
+            deep: 0x008080,
+            landBase: 0x2F4F4F,
+            gold: 0xffd700,
+          },
+          oceanic3: {
+            white: 0xADD8E6,
+            blue: 0x4169E1,
+            deep: 0x00008B,
+            landBase: 0x191970,
+            gold: 0xFFEC8B,
+          },
+          'deep-land': {
+            white: 0xffffff,
+            blue: 0x0077ff,
+            deep: 0x483D8B,
+            landBase: 0x000044,
+            gold: 0xffd700,
+          },
+          magma: {
+            white: 0xFFFF00,
+            blue: 0xFF4500,
+            deep: 0x8B0000,
+            landBase: 0x1a1a1a,
+            gold: 0xFFD700,
+          },
+          grayscale: {
+            white: 0xFFFFFF,
+            blue: 0x808080,
+            deep: 0x202020,
+            landBase: 0x404040,
+            gold: 0xFFFFFF,
+          }
+        };
+
+        let colorGold = new THREE.Color();
+        let colorWhite = new THREE.Color();
+        let colorBlue = new THREE.Color();
+        let colorDeep = new THREE.Color();
+        let landColorBase = new THREE.Color();
+        let colorLand = new THREE.Color();
+
+        function setColorway(name) {
+          const scheme = colorways[name];
+          if (!scheme) return;
+
+          // Update active button style
+          document.querySelectorAll('#ui div button[id^="colorway-"]').forEach(btn => {
+            btn.classList.remove('active-colorway');
+          });
+          const activeBtn = document.getElementById(`colorway-${name}`);
+          if (activeBtn) activeBtn.classList.add('active-colorway');
+
+          colorWhite.setHex(scheme.white);
+          colorBlue.setHex(scheme.blue);
+          colorDeep.setHex(scheme.deep);
+          landColorBase.setHex(scheme.landBase);
+          colorGold.setHex(scheme.gold);
+          
+          // Recalculate land color based on current goldness
+          const goldness = parseFloat(goldSlider.value);
+          colorLand.lerpColors(landColorBase, colorGold, goldness);
+          
+          updateLandColors();
+          // Trigger a re-render of elevations to apply new ocean colors
+          if (ready) {
+            worker.postMessage({ type: 'compute', tSeconds: simTime });
+          }
+        }
+
+        document.getElementById('colorway-oceanic').onclick = () => setColorway('oceanic');
+        document.getElementById('colorway-digital').onclick = () => setColorway('oceanic2'); // still uses oceanic2 internally
+        document.getElementById('colorway-algae').onclick = () => setColorway('magma'); // still uses magma internally
+
+        // Set initial colorway
+        setColorway('oceanic');
+
+        document.getElementById('time-box').onclick = () => {
+          document.getElementById('datetime').showPicker();
+        };
+
         const tmp = new THREE.Color();
 
         // let simTime = 0; // moved earlier
@@ -449,10 +911,91 @@
           if (!val) return;
           const local = new Date(val.replace('T',' ') + ' UTC');
           if (isNaN(local.getTime())) return;
-          setSimTimeFromDate(local);
-          // request immediate recompute at this time
-          worker.postMessage({ type:'compute', tSeconds: simTime });
+          const targetSimTime = (local.getTime() - new Date('1970-01-01T00:00:00Z').getTime())/1000;
+          tweenSimTime(targetSimTime, 2000); // Tween over 2 seconds
         };
+
+        const waterColorCache = {
+            points: null,
+            tiles: null,
+        };
+
+        function prepareForBloom() {
+          if (!ptsGeom || !instancedTiles || !land) return;
+        
+          const pColors = ptsGeom.attributes.color.array;
+          const tColors = instancedTiles.instanceColor.array;
+        
+          if (!waterColorCache.points) waterColorCache.points = new Float32Array(pColors.length);
+          if (!waterColorCache.tiles) waterColorCache.tiles = new Float32Array(tColors.length);
+        
+          for (let i = 0; i < N; i++) {
+            if (!land[i]) {
+              const b = i * 3;
+              // Cache point color
+              waterColorCache.points[b] = pColors[b];
+              waterColorCache.points[b + 1] = pColors[b + 1];
+              waterColorCache.points[b + 2] = pColors[b + 2];
+              // Scale point color for bloom
+              pColors[b] *= oceanGlow;
+              pColors[b + 1] *= oceanGlow;
+              pColors[b + 2] *= oceanGlow;
+        
+              // Cache tile color
+              waterColorCache.tiles[b] = tColors[b];
+              waterColorCache.tiles[b + 1] = tColors[b + 1];
+              waterColorCache.tiles[b + 2] = tColors[b + 2];
+              // Scale tile color for bloom
+              tColors[b] *= oceanGlow;
+              tColors[b + 1] *= oceanGlow;
+              tColors[b + 2] *= oceanGlow;
+            }
+          }
+          ptsGeom.attributes.color.needsUpdate = true;
+          instancedTiles.instanceColor.needsUpdate = true;
+        }
+
+        function cleanupAfterBloom() {
+          if (!ptsGeom || !instancedTiles || !land) return;
+        
+          const pColors = ptsGeom.attributes.color.array;
+          const tColors = instancedTiles.instanceColor.array;
+        
+          for (let i = 0; i < N; i++) {
+            if (!land[i]) {
+              const b = i * 3;
+              // Restore point color from cache
+              pColors[b] = waterColorCache.points[b];
+              pColors[b + 1] = waterColorCache.points[b + 1];
+              pColors[b + 2] = waterColorCache.points[b + 2];
+        
+              // Restore tile color from cache
+              tColors[b] = waterColorCache.tiles[b];
+              tColors[b + 1] = waterColorCache.tiles[b + 1];
+              tColors[b + 2] = waterColorCache.tiles[b + 2];
+            }
+          }
+          ptsGeom.attributes.color.needsUpdate = true;
+          instancedTiles.instanceColor.needsUpdate = true;
+        }
+
+        const darkMaterial = new THREE.MeshBasicMaterial({ color: 'black' });
+        const materials = {};
+
+        function darkenNonBloomed(obj) {
+          if (obj.isMesh && bloomLayer.test(obj.layers) === false) {
+            materials[obj.uuid] = obj.material;
+            obj.material = darkMaterial;
+          }
+        }
+        function restoreMaterials(obj) {
+          if (materials[obj.uuid]) {
+            obj.material = materials[obj.uuid];
+            delete materials[obj.uuid];
+          }
+        }
+
+
         function animate(ts){
           requestAnimationFrame(animate);
           if (!ready) { renderer.render(scene,camera); return; }
@@ -465,10 +1008,15 @@
           
           controls.update();
           if (!isLightLocked) {
-            directionalLight.position.copy(camera.position);
+            directionalLight.position.copy(lightOffsetDirection.clone().transformDirection(camera.matrixWorld));
           }
           occluder.lookAt(camera.position);
-          renderer.render(scene, camera);
+          
+          prepareForBloom();
+          bloomComposer.render();
+          cleanupAfterBloom();
+
+          finalComposer.render();
         }
 
         let scaleLogged = false;
@@ -492,18 +1040,6 @@
               elev[i] = NaN; // Mark as invalid if non-finite or extreme
             }
           }
-          if (!scaleLogged && Number.isFinite(rawMin) && Number.isFinite(rawMax)){
-            const typicalAmp = Math.abs(rawMax - rawMin) / 2;
-            console.log('[scale]', {
-              metersToUnits,
-              exag,
-              oneMeterUnits: metersToUnits,
-              oneMeterWithExag: metersToUnits * exag,
-              typicalAmpMeters: typicalAmp,
-              typicalDispUnits: typicalAmp * metersToUnits * exag
-            });
-            scaleLogged = true;
-          }
 
           // Fixed baseline at -5.6m (empirically determined), scaled by exaggeration
           const minElevUnits = -5.6 * metersToUnits * exag;
@@ -514,7 +1050,7 @@
             // and ensure its position is on the base sphere.
             if (land[i]) {
               // Land vertices: always green
-              colors[b]=colorGreen.r; colors[b+1]=colorGreen.g; colors[b+2]=colorGreen.b;
+              colors[b]=colorLand.r; colors[b+1]=colorLand.g; colors[b+2]=colorLand.b;
               const vx = basePos[b], vy = basePos[b+1], vz = basePos[b+2];
               const mag0 = Math.hypot(vx,vy,vz) || 1;
               const nx0 = vx/mag0, ny0 = vy/mag0, nz0 = vz/mag0;
@@ -537,9 +1073,9 @@
                 tmpMat.compose(tmpPosV, tmpQuat, tmpScale);
                 instancedTiles.setMatrixAt(i, tmpMat);
                 const colorIdx = i * 3;
-                instancedTiles.instanceColor.array[colorIdx] = colorGreen.r;
-                instancedTiles.instanceColor.array[colorIdx+1] = colorGreen.g;
-                instancedTiles.instanceColor.array[colorIdx+2] = colorGreen.b;
+                instancedTiles.instanceColor.array[colorIdx] = colorLand.r;
+                instancedTiles.instanceColor.array[colorIdx+1] = colorLand.g;
+                instancedTiles.instanceColor.array[colorIdx+2] = colorLand.b;
               }
               continue;
             }
@@ -577,7 +1113,7 @@
   
             // Colors and tiles use the clamped elevation for consistency with the UI range
             const v = Math.max(-range, Math.min(range, e));
-            // White (min) -> Blue (zero) -> Gold (max)
+            // White (min) -> Blue (zero) -> Dark Blue (max)
             if (v <= 0) {
               let u = (v + range) / range; // -range..0 => 0..1
               u = Math.sqrt(Math.max(0, Math.min(1, u)));
@@ -585,7 +1121,7 @@
             } else {
               let u = v / range; // 0..range => 0..1
               u = Math.sqrt(Math.max(0, Math.min(1, u)));
-              tmp.lerpColors(colorBlue, colorGold, u);
+              tmp.lerpColors(colorBlue, colorDeep, u);
             }
             colors[b]=tmp.r; colors[b+1]=tmp.g; colors[b+2]=tmp.b;
 
@@ -640,7 +1176,6 @@
           const lowPct = finiteCount ? Math.round((clampLow/finiteCount)*100) : 0;
           const highPct = finiteCount ? Math.round((clampHigh/finiteCount)*100) : 0;
           tlabel.textContent = `${d.toISOString().replace('T',' ').replace('Z','Z')}`;
-          //tlable.textContent = `${d.toISOString().replace('T',' ').replace('Z','Z')}`
           ;
       }
 
