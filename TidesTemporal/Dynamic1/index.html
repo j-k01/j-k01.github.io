@@ -441,8 +441,16 @@
         renderer.domElement.addEventListener('wheel', stopZooming, { once: true });
 
 
-        const distance = 14;
+        let distance = 14;
         const angle = 20 * Math.PI / 180; // 20 degrees in radians
+
+        // Adjust for mobile devices
+        if (window.innerWidth < 768) {
+          distance = 14 * 1.5; // 50% more zoomed out
+          // Panning the camera up (moving the globe down) is done by raising the camera's target
+          controls.target.set(0, 3, 0); 
+        }
+
         camera.position.set(0, distance * Math.sin(angle), distance * Math.cos(angle));
         controls.update();
 
