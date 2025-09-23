@@ -207,8 +207,14 @@
           min-height: 520px; /* Ensure graph maintains its natural height */
         }
         
-        /* Hide style controls when graph is open on mobile */
+        /* Hide style controls and exaggeration slider when graph is open on mobile */
         .graph-open #controls-container {
+          display: none;
+        }
+        .graph-open #exag {
+          display: none;
+        }
+        .graph-open label[for="exag"] {
           display: none;
         }
         
