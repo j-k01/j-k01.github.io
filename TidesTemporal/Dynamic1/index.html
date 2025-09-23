@@ -11,258 +11,7 @@
         }
       }
     </script>
-    <style>
-      html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: Arial, sans-serif; }
-      #ui { position: fixed; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 4px; z-index: 10; }
-
-      #ui > div { margin-bottom: 5px; }
-      #tlabel {
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 14px;
-        vertical-align: middle;
-        margin-left: 10px;
-      }
-
-      #ui button.inverted,
-      #ui button.active-colorway {
-        background: #00aaff;
-        color: #000;
-      }
-
-      #ui button, #ui input[type="button"] {
-        background: transparent;
-        border: 1px solid #00aaff;
-        color: #00aaff;
-        padding: 3px 8px;
-        margin: 2px;
-        cursor: pointer;
-        border-radius: 3px;
-        font-family: 'Courier New', Courier, monospace;
-        font-weight: bold;
-        transition: background 0.2s, color 0.2s;
-        vertical-align: middle;
-      }
-      #ui button:hover, #ui input[type="button"]:hover {
-        background: #00aaff;
-        color: #000;
-      }
-
-      #lock-light-btn {
-        width: 160px; /* Fixed width to prevent resize on text change */
-        text-align: left;
-        white-space: nowrap;
-      }
-
-      #time-box {
-        display: inline-block;
-        border: 1px solid #00aaff;
-        border-radius: 3px;
-        padding: 4px;
-        vertical-align: middle;
-      }
-      #time-box:hover {
-        border-color: #fff;
-      }
-      #time-box input[type="datetime-local"] {
-        border: none;
-        padding: 0;
-        margin: 0;
-        background: transparent;
-        color: #fff;
-        font-family: 'Courier New', Courier, monospace;
-      }
-
-      input[type=range] {
-        -webkit-appearance: none;
-        background: transparent;
-        width: 150px;
-        margin: 1px 0;
-        vertical-align: middle;
-      }
-      input[type=range]:focus {
-        outline: none;
-      }
-
-      /* Webkit */
-      input[type=range]::-webkit-slider-runnable-track {
-        width: 100%;
-        height: 12px;
-        cursor: pointer;
-        background: linear-gradient(to right, #005588 0%, #005588 var(--value-percent, 0%), rgba(0, 50, 80, 0.5) var(--value-percent, 0%), rgba(0, 50, 80, 0.5) 100%);
-        border-radius: 2px;
-        border: 1px solid #00aaff;
-      }
-
-      input[type=range]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        border: 1px solid #00aaff;
-        height: 12px;
-        width: 6px;
-        border-radius: 1px;
-        background: #00aaff;
-        cursor: pointer;
-        margin-top: -1px;
-      }
-
-      /* Firefox */
-      input[type=range]::-moz-range-track {
-        width: 100%;
-        height: 12px;
-        cursor: pointer;
-        background: linear-gradient(to right, #005588 0%, #005588 var(--value-percent, 0%), rgba(0, 50, 80, 0.5) var(--value-percent, 0%), rgba(0, 50, 80, 0.5) 100%);
-        border-radius: 2px;
-        border: 1px solid #00aaff;
-      }
-
-      input[type=range]::-moz-range-thumb {
-        border: 1px solid #00aaff;
-        height: 12px;
-        width: 6px;
-        border-radius: 1px;
-        background: #00aaff;
-        cursor: pointer;
-      }
-
-      #ui input[type="datetime-local"], #ui input[type="text"] {
-        background: transparent;
-        border: 1px solid #00aaff;
-        color: #fff;
-        padding: 4px;
-        border-radius: 3px;
-        font-family: 'Courier New', Courier, monospace;
-      }
-      
-      #ui label {
-        display: block;
-        margin: 2px 0;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 14px;
-      }
-
-      .slider-label {
-        display: inline-block;
-        width: 45px;
-        text-align: left;
-        margin-right: 2px;
-      }
-
-      #invert-btn {
-        width: 100%;
-        padding-top: 1px;
-        padding-bottom: 1px;
-        letter-spacing: 2px;
-        transform: scaleY(0.8);
-      }
-
-      .button-row {
-        display: flex;
-      }
-
-      .button-row button {
-        flex: 1;
-        margin: 1px;
-        white-space: nowrap;
-      }
-
-      .button-row button.ghost {
-        visibility: hidden;
-      }
-
-      #digital-land-options button, #oceanic-land-options button {
-        padding: 2px 6px;
-        font-size: 12px;
-      }
-
-      #controls-container {
-        display: inline-block;
-      }
-
-      #graph-container {
-        position: fixed;
-        top: 8px;
-        right: 8px;
-        width: 560px;
-        height: 520px;
-        background: rgba(0,0,0,0.75);
-        border: 1px solid #00aaff;
-        border-radius: 4px;
-        z-index: 20;
-        display: none; /* Initially hidden */
-        font-family: 'Courier New', Courier, monospace;
-      }
-
-      /* Mobile-specific styling for graph container */
-      @media (max-width: 768px) {
-        #graph-container {
-          top: auto;
-          bottom: 8px;
-          right: 8px;
-          left: 8px;
-          width: auto;
-          height: 60vh; /* Use 60% of viewport height for scrollable area */
-          overflow-y: auto; /* Enable vertical scrolling */
-          overflow-x: hidden; /* Prevent horizontal scrolling */
-        }
-        #tidal-graph {
-          min-height: 520px; /* Ensure graph maintains its natural height */
-        }
-        
-        /* Hide style controls and exaggeration slider when graph is open on mobile */
-        .graph-open #controls-container {
-          display: none;
-        }
-        .graph-open #exag {
-          display: none;
-        }
-        .graph-open label[for="exag"] {
-          display: none;
-        }
-        /* Hide the "Exag" label text */
-        .graph-open label:has(#exag) {
-          display: none;
-        }
-        
-        /* Make UI container auto-resize when controls are hidden */
-        #ui {
-          transition: all 0.3s ease;
-        }
-        .graph-open #ui {
-          /* Let the container shrink to fit its remaining content */
-        }
-      }
-      #graph-container.visible {
-        display: block;
-      }
-      #tidal-graph {
-        width: 100%;
-        height: 100%;
-      }
-      #graph-info {
-        position: absolute;
-        top: 8px;
-        left: 8px;
-        color: #fff;
-        font-size: 12px;
-        pointer-events: none;
-      }
-      #close-graph-btn {
-        position: absolute;
-        top: 4px;
-        right: 4px;
-        background: transparent;
-        border: 1px solid #00aaff;
-        color: #00aaff;
-        cursor: pointer;
-        padding: 0px 4px 1px 4px;
-        font-size: 14px;
-        line-height: 1;
-        border-radius: 2px;
-      }
-      #close-graph-btn:hover {
-        background: #00aaff;
-        color: #000;
-      }
-    </style>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="ui">
@@ -1116,13 +865,44 @@
           }
         });
 
+        // Track mouse movement to distinguish clicks from drags
+        let mouseStartPos = { x: 0, y: 0 };
+        let mouseStartTime = 0;
+        let isDragging = false;
+        const clickDistanceThreshold = 5; // pixels
+
+        renderer.domElement.addEventListener('mousedown', (event) => {
+          mouseStartPos.x = event.clientX;
+          mouseStartPos.y = event.clientY;
+          mouseStartTime = performance.now();
+          isDragging = false;
+        });
+
+        renderer.domElement.addEventListener('mousemove', (event) => {
+          if (mouseStartTime > 0) {
+            const distance = Math.hypot(
+              event.clientX - mouseStartPos.x,
+              event.clientY - mouseStartPos.y
+            );
+            if (distance > clickDistanceThreshold) {
+              isDragging = true;
+            }
+          }
+        });
+
+        renderer.domElement.addEventListener('mouseup', (event) => {
+          mouseStartTime = 0;
+        });
+
         // Also handle mouse clicks as backup for touch devices
         renderer.domElement.addEventListener('click', (event) => {
-          // Only handle click if no double-click event fired recently
-          // This prevents both click and dblclick from firing on desktop
-          if (performance.now() - tapStartTime > tapThreshold) {
+          // Only handle click if:
+          // 1. No double-click event fired recently
+          // 2. We're not in a drag operation
+          if (performance.now() - tapStartTime > tapThreshold && !isDragging) {
             selectTileFromPointer(event.clientX, event.clientY);
           }
+          isDragging = false; // Reset drag state after click
         });
 
         function tweenSimTime(targetSimTime, duration) {
