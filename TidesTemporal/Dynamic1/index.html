@@ -199,12 +199,25 @@
           right: 8px;
           left: 8px;
           width: auto;
-          height: 40vh; /* Use 40% of viewport height for scrollable area */
+          height: 60vh; /* Use 60% of viewport height for scrollable area */
           overflow-y: auto; /* Enable vertical scrolling */
           overflow-x: hidden; /* Prevent horizontal scrolling */
         }
         #tidal-graph {
           min-height: 520px; /* Ensure graph maintains its natural height */
+        }
+        
+        /* Hide style controls when graph is open on mobile */
+        .graph-open #controls-container {
+          display: none;
+        }
+        
+        /* Make UI container auto-resize when controls are hidden */
+        #ui {
+          transition: all 0.3s ease;
+        }
+        .graph-open #ui {
+          /* Let the container shrink to fit its remaining content */
         }
       }
       #graph-container.visible {
@@ -989,6 +1002,10 @@
 
           if (selectedStation !== -1) {
             graphContainer.classList.add('visible');
+            // Add class to body for mobile styling
+            if (window.innerWidth <= 768) {
+              document.body.classList.add('graph-open');
+            }
             graphInfo.innerHTML = `Tidal Components<br><span style="opacity:0.9">Lat: ${lats[selectedStation].toFixed(2)}, Lon: ${lons[selectedStation].toFixed(2)}</span><br>`;
             clearGraph();
             initGraph();
@@ -1010,6 +1027,8 @@
             console.log("Selected station:", selectedStation, `Lat: ${lats[selectedStation]}, Lon: ${lons[selectedStation]}`);
           } else {
             graphContainer.classList.remove('visible');
+            // Remove class from body for mobile styling
+            document.body.classList.remove('graph-open');
             worker.postMessage({ type: 'set_selected_station', station: -1 });
             updateHighlightTile(-1);
             console.log("Deselected station.");
