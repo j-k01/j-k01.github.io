@@ -217,6 +217,10 @@
         .graph-open label[for="exag"] {
           display: none;
         }
+        /* Hide the "Exag" label text */
+        .graph-open label:has(#exag) {
+          display: none;
+        }
         
         /* Make UI container auto-resize when controls are hidden */
         #ui {
