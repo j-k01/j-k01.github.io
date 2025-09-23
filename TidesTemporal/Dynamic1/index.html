@@ -190,6 +190,20 @@
         display: none; /* Initially hidden */
         font-family: 'Courier New', Courier, monospace;
       }
+
+      /* Mobile-specific styling for graph container */
+      @media (max-width: 768px) {
+        #graph-container {
+          top: auto;
+          bottom: 8px;
+          right: 8px;
+          left: 8px;
+          width: auto;
+          height: 40vh; /* Use 40% of viewport height */
+          max-height: 400px;
+          min-height: 200px;
+        }
+      }
       #graph-container.visible {
         display: block;
       }
@@ -999,10 +1013,11 @@
           }
         }
 
-        renderer.domElement.addEventListener('dblclick', (event) => {
+        // Function to handle tile selection from pointer coordinates
+        function selectTileFromPointer(clientX, clientY) {
           const mouse = new THREE.Vector2();
-          mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-          mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+          mouse.x = (clientX / window.innerWidth) * 2 - 1;
+          mouse.y = -(clientY / window.innerHeight) * 2 + 1;
         
           const raycaster = new THREE.Raycaster();
           raycaster.setFromCamera(mouse, camera);
@@ -1025,6 +1040,56 @@
             if (best !== -1) {
               setSelectedStation(best);
             }
+          }
+        }
+
+        // Handle double-click for desktop
+        renderer.domElement.addEventListener('dblclick', (event) => {
+          selectTileFromPointer(event.clientX, event.clientY);
+        });
+
+        // Handle single tap for mobile/web
+        let tapStartTime = 0;
+        let tapStartPos = { x: 0, y: 0 };
+        const tapThreshold = 300; // ms
+        const tapDistanceThreshold = 10; // pixels
+
+        renderer.domElement.addEventListener('touchstart', (event) => {
+          if (event.touches.length === 1) {
+            tapStartTime = performance.now();
+            tapStartPos.x = event.touches[0].clientX;
+            tapStartPos.y = event.touches[0].clientY;
+          }
+        });
+
+        renderer.domElement.addEventListener('touchend', (event) => {
+          if (event.changedTouches.length === 1) {
+            const tapEndTime = performance.now();
+            const tapDuration = tapEndTime - tapStartTime;
+            const tapEndPos = {
+              x: event.changedTouches[0].clientX,
+              y: event.changedTouches[0].clientY
+            };
+            const tapDistance = Math.hypot(
+              tapEndPos.x - tapStartPos.x,
+              tapEndPos.y - tapStartPos.y
+            );
+
+            // Check if this is a valid tap (short duration, small movement)
+            if (tapDuration < tapThreshold && tapDistance < tapDistanceThreshold) {
+              // Prevent default to avoid triggering double-tap zoom on mobile
+              event.preventDefault();
+              selectTileFromPointer(tapEndPos.x, tapEndPos.y);
+            }
+          }
+        });
+
+        // Also handle mouse clicks as backup for touch devices
+        renderer.domElement.addEventListener('click', (event) => {
+          // Only handle click if no double-click event fired recently
+          // This prevents both click and dblclick from firing on desktop
+          if (performance.now() - tapStartTime > tapThreshold) {
+            selectTileFromPointer(event.clientX, event.clientY);
           }
         });
 
