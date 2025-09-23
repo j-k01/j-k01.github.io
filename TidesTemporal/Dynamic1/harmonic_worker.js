@@ -8,6 +8,9 @@ let cosPhi = null;     // Float32Array length N*K
 let sinPhi = null;     // Float32Array length N*K
 let omega = null;      // Float64Array length K (rad/sec)
 
+let selectedStation = -1;
+let trackedComponentIndices = [];
+
 self.onmessage = (ev) => {
   const { type } = ev.data || {};
   if (type === 'init') {
@@ -55,6 +58,57 @@ self.onmessage = (ev) => {
     postMessage({ type: 'ready', phiIsDegrees });
     return;
   }
+  if (type === 'set_selected_station') {
+    selectedStation = ev.data.station;
+    trackedComponentIndices = ev.data.componentIndices || [];
+    return;
+  }
+  if (type === 'compute_historical') {
+    const { station, componentIndices, startTime, endTime, timeStep } = ev.data;
+    if (station < 0 || station >= numStations || !componentIndices.length) {
+      postMessage({ type: 'historical_result', error: 'Invalid parameters' });
+      return;
+    }
+
+    const timePoints = [];
+    const componentData = [];
+    
+    // Initialize arrays for each component
+    for (let i = 0; i < componentIndices.length; i++) {
+      componentData.push([]);
+    }
+
+    // Compute data for each time point
+    for (let t = startTime; t <= endTime; t += timeStep) {
+      timePoints.push(t);
+      
+      // Compute cos/sin alpha_k(t) for this time
+      const cosAlpha = new Float64Array(numConstituents);
+      const sinAlpha = new Float64Array(numConstituents);
+      for (let k = 0; k < numConstituents; k++) {
+        const a = omega[k] * t;
+        cosAlpha[k] = Math.cos(a);
+        sinAlpha[k] = Math.sin(a);
+      }
+
+      // Compute each tracked component value
+      const base = station * numConstituents;
+      for (let i = 0; i < componentIndices.length; i++) {
+        const k = componentIndices[i];
+        const Ak = amplitudes[base + k];
+        const term = Ak * (cosPhi[base + k] * cosAlpha[k] + sinPhi[base + k] * sinAlpha[k]);
+        componentData[i].push(Number.isFinite(term) ? term : 0);
+      }
+    }
+
+    postMessage({ 
+      type: 'historical_result', 
+      station, 
+      timePoints, 
+      componentData 
+    }, []);
+    return;
+  }
   if (type === 'compute') {
     const { tSeconds } = ev.data;
     const out = new Float32Array(numStations);
@@ -89,8 +143,25 @@ self.onmessage = (ev) => {
         out[s] = h;
       }
     }
+    
+    let componentValues = null;
+    if (selectedStation !== -1 && trackedComponentIndices.length > 0) {
+      componentValues = new Float32Array(trackedComponentIndices.length);
+      const base = selectedStation * numConstituents;
+      for (let i = 0; i < trackedComponentIndices.length; i++) {
+        const k = trackedComponentIndices[i];
+        const Ak = amplitudes[base + k];
+        const term = Ak * (cosPhi[base + k] * cosAlpha[k] + sinPhi[base + k] * sinAlpha[k]);
+        componentValues[i] = Number.isFinite(term) ? term : 0;
+      }
+    }
+
     // Transfer buffer back
-    postMessage({ type: 'result', elevations: out }, [out.buffer]);
+    if (componentValues) {
+      postMessage({ type: 'result', elevations: out, componentValues: componentValues }, [out.buffer, componentValues.buffer]);
+    } else {
+      postMessage({ type: 'result', elevations: out }, [out.buffer]);
+    }
     return;
   }
   if (type === 'compute_single') {

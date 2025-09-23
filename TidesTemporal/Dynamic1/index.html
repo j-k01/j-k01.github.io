@@ -154,8 +154,73 @@
         transform: scaleY(0.8);
       }
 
+      .button-row {
+        display: flex;
+      }
+
+      .button-row button {
+        flex: 1;
+        margin: 1px;
+        white-space: nowrap;
+      }
+
+      .button-row button.ghost {
+        visibility: hidden;
+      }
+
+      #digital-land-options button, #oceanic-land-options button {
+        padding: 2px 6px;
+        font-size: 12px;
+      }
+
       #controls-container {
         display: inline-block;
+      }
+
+      #graph-container {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        width: 560px;
+        height: 520px;
+        background: rgba(0,0,0,0.75);
+        border: 1px solid #00aaff;
+        border-radius: 4px;
+        z-index: 20;
+        display: none; /* Initially hidden */
+        font-family: 'Courier New', Courier, monospace;
+      }
+      #graph-container.visible {
+        display: block;
+      }
+      #tidal-graph {
+        width: 100%;
+        height: 100%;
+      }
+      #graph-info {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        color: #fff;
+        font-size: 12px;
+        pointer-events: none;
+      }
+      #close-graph-btn {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        background: transparent;
+        border: 1px solid #00aaff;
+        color: #00aaff;
+        cursor: pointer;
+        padding: 0px 4px 1px 4px;
+        font-size: 14px;
+        line-height: 1;
+        border-radius: 2px;
+      }
+      #close-graph-btn:hover {
+        background: #00aaff;
+        color: #000;
       }
     </style>
   </head>
@@ -163,7 +228,7 @@
     <div id="ui">
       <div>
         <div id="time-box">
-          <input id="datetime" type="datetime-local" step="1" />
+        <input id="datetime" type="datetime-local" step="1" />
         </div>
         <button id="jump">Go</button>
       </div>
@@ -179,17 +244,35 @@
       <label style="display: none;">Ocean Glow <input id="ocean-glow" type="range" min="0" max="1" step="0.01" value="0.15"/></label>
       <div style="display: none;">
         <button id="lock-light-btn">☀️ Follow Camera</button>
-      </div>
+    </div>
       <div id="controls-container">
-        <div>
+        <div class="button-row">
           <button id="invert-btn">Show Land</button>
         </div>
-        <div>
+        <div id="main-colorway-buttons" class="button-row">
           <button id="colorway-oceanic" class="active-colorway">Oceanic</button>
           <button id="colorway-digital">Digital</button>
-          <button id="colorway-algae">Ember Zoa</button>
+          <button id="colorway-ember-zoa">Ember Zoa</button>
+        </div>
+        <div id="oceanic-land-options" class="button-row" style="display: none;">
+          <button id="land-color-gold-oceanic" class="active-colorway">Gold</button>
+          <button id="land-color-green-oceanic">Green</button>
+          <button class="ghost"></button>
+          <button class="ghost"></button>
+        </div>
+        <div id="digital-land-options" class="button-row" style="display: none;">
+          <button id="land-color-gold">Gold</button>
+          <button id="land-color-cyan">Cyan</button>
+          <button id="land-color-white" class="active-colorway">White</button>
+          <button id="land-color-green">Green</button>
         </div>
       </div>
+    </div>
+
+    <div id="graph-container">
+      <div id="graph-info"></div>
+      <canvas id="tidal-graph"></canvas>
+      <button id="close-graph-btn" title="Close Graph">&times;</button>
     </div>
 
     <script type="x-shader/x-vertex" id="vertexshader">
@@ -314,6 +397,27 @@
         worker.postMessage({ type:'init', N, K, A, Phi, Omega });
         const tlabel = document.getElementById('tlabel');
         
+        const requestedComponents = ['M2', 'S2', 'K1', 'O1', 'P1'];
+        const trackedPairs = requestedComponents.map(name => {
+          const upper = name.toUpperCase();
+          const idx = names.findIndex(n => n.toUpperCase().replace(/[\'`′]/g, '') === upper);
+          return idx !== -1 ? { name, index: idx } : null;
+        }).filter(Boolean);
+        const trackedComponentIndices = trackedPairs.map(p => p.index);
+        const trackedComponentNames = trackedPairs.map(p => p.name);
+        console.log('Tracking components:', trackedPairs);
+
+        const componentDescriptions = {
+          'M2': 'Principal Lunar Semidiurnal',
+          'S2': 'Principal Solar Semidiurnal',
+          'N2': 'Larger Lunar Elliptic Semidiurnal',
+          'K2': 'Lunisolar Semidiurnal',
+          'K1': 'Lunisolar Diurnal',
+          'O1': 'Principal Lunar Diurnal',
+          'P1': 'Principal Solar Diurnal',
+          'Q1': 'Larger Lunar Elliptic Diurnal'
+        };
+
         // Debug UI
         // const debugBtn = document.createElement('button');
         // debugBtn.textContent = 'Inspect nearest';
@@ -351,11 +455,13 @@
         //   console.log('[inspect] requested station', s, 'lat/lon', lats[s], lons[s]);
         // };
         
+        let phiIsDegreesFlag = null;
         worker.onmessage = (ev) => {
           const { type } = ev.data || {};
           if (type === 'ready') { 
             ready = true; 
             if (ev.data && typeof ev.data.phiIsDegrees === 'boolean') {
+              phiIsDegreesFlag = ev.data.phiIsDegrees;
               console.warn('Worker phases treated as', ev.data.phiIsDegrees ? 'degrees (auto-converted to radians)' : 'radians');
             }
             // Trigger initial compute to show points with proper colors
@@ -382,7 +488,23 @@
             console.table(detail.slice(0,12));
             console.log('[single_debug] station', s, 'lat/lon', lats[s], lons[s], 'sum=', sum, 'top terms above');
           }
-          if (type === 'result') { applyElevations(ev.data.elevations); }
+          if (type === 'result') { 
+            if (ev.data.componentValues) {
+              updateGraph(simTime, new Float32Array(ev.data.componentValues));
+            }
+            applyElevations(ev.data.elevations);
+            // Update highlight tile with current elevation
+            if (selectedStation !== -1) {
+              updateHighlightTile(selectedStation, ev.data.elevations[selectedStation]);
+            }
+          }
+          if (type === 'historical_result') {
+            if (ev.data.error) {
+              console.warn('Historical computation error:', ev.data.error);
+              return;
+            }
+            populateHistoricalData(ev.data.timePoints, ev.data.componentData);
+          }
         };
 
         // Three.js scene
@@ -465,6 +587,13 @@
         const lightOffsetDirection = directionalLight.position.clone().transformDirection(cameraInverseMatrix);
 
         const earthR = 6.37;
+        // Invisible sphere for raycasting
+        const earthSphere = new THREE.Mesh(
+          new THREE.SphereGeometry(earthR, 64, 32),
+          new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true, visible: false })
+        );
+        scene.add(earthSphere);
+
         const ptsGeom = new THREE.BufferGeometry();
         const vertices = [];
         for (let i=0;i<N;i++) {
@@ -525,6 +654,277 @@
         let isLandShown = false;
         let currentTween = null;
         let currentTimeTween = null;
+        let selectedStation = -1;
+        const graphContainer = document.getElementById('graph-container');
+        const graphInfo = document.getElementById('graph-info');
+        const closeGraphBtn = document.getElementById('close-graph-btn');
+        const graphCanvas = document.getElementById('tidal-graph');
+        const graphCtx = graphCanvas.getContext('2d');
+
+        const twoDaysInSeconds = 2 * 24 * 3600;
+        const graphData = trackedComponentNames.map(() => []); // Array of arrays for each component's data points [time, value]
+        const componentColors = ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff'];
+
+        function initGraph() {
+          const dpr = window.devicePixelRatio || 1;
+          const rect = graphCanvas.getBoundingClientRect();
+          const w = Math.max(1, Math.floor(rect.width));
+          const h = Math.max(1, Math.floor(rect.height));
+          graphCanvas.width = w * dpr;
+          graphCanvas.height = h * dpr;
+          graphCtx.setTransform(1, 0, 0, 1, 0, 0);
+          graphCtx.scale(dpr, dpr);
+        }
+        initGraph();
+
+        window.addEventListener('resize', () => {
+          if (graphContainer.classList.contains('visible')) {
+            initGraph();
+            drawGraph();
+          }
+        });
+
+        function clearGraph() {
+          graphData.forEach(arr => arr.length = 0);
+        }
+
+        function drawGraph() {
+          const rect = graphCanvas.getBoundingClientRect();
+          const width = Math.floor(rect.width);
+          const height = Math.floor(rect.height);
+          if (width <= 0 || height <= 0) return;
+          graphCtx.clearRect(0, 0, width, height);
+          
+          // Some visual settings
+          const padding = { top: 60, right: 15, bottom: 20, left: 140 }; // extra top space for header
+          const plotWidth = width - padding.left - padding.right;
+          const plotHeight = height - padding.top - padding.bottom;
+          const maxAmplitude = 1.0; // Fixed y-axis range [-1m, 1m] shared across all subplots
+          if (plotWidth <= 0 || plotHeight <= 0) return;
+
+          // Background
+          graphCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+          graphCtx.fillRect(0, 0, width, height);
+
+          // Determine global time window from latest available data across all components
+          let latestTime = -Infinity;
+          for (let i = 0; i < graphData.length; i++) {
+            const arr = graphData[i];
+            if (arr.length > 0) latestTime = Math.max(latestTime, arr[arr.length - 1][0]);
+          }
+          const hasData = Number.isFinite(latestTime);
+          const startTime = hasData ? latestTime - twoDaysInSeconds : (simTime - twoDaysInSeconds);
+
+          // Subplot layout (two columns: left=component, right=accumulator)
+          const num = Math.max(1, trackedComponentNames.length);
+          const subH = Math.max(80, Math.floor(plotHeight / num));
+          const colGap = 10;
+          const colWidth = (plotWidth - colGap) / 2;
+
+          // Draw each subplot
+          for (let i = 0; i < num; i++) {
+            const subTop = padding.top + i * subH;
+            const subBottom = subTop + subH;
+
+            // Axes: left axis and zero line
+            graphCtx.strokeStyle = '#00aaff';
+            graphCtx.lineWidth = 1;
+            graphCtx.beginPath();
+            // component column axes
+            graphCtx.moveTo(padding.left, subTop);
+            graphCtx.lineTo(padding.left, subBottom);
+            const yZero = subTop + subH / 2;
+            graphCtx.moveTo(padding.left, yZero);
+            graphCtx.lineTo(padding.left + colWidth, yZero);
+            // accumulator column axes
+            const rightColLeft = padding.left + colWidth + colGap;
+            graphCtx.moveTo(rightColLeft, subTop);
+            graphCtx.lineTo(rightColLeft, subBottom);
+            graphCtx.moveTo(rightColLeft, yZero);
+            graphCtx.lineTo(rightColLeft + colWidth, yZero);
+            graphCtx.stroke();
+
+            // Right column title once at the top row
+            if (i === 0) {
+              graphCtx.fillStyle = '#ffaa00';
+              graphCtx.font = 'bold 10px Courier New';
+              graphCtx.textAlign = 'left';
+              graphCtx.textBaseline = 'bottom';
+              graphCtx.fillText('Accumulators', rightColLeft + 4, padding.top - 4);
+              // also label left column once
+              graphCtx.fillStyle = '#00aaff';
+              graphCtx.fillText('Components', padding.left + 4, padding.top - 4);
+            }
+
+            // Dotted daily time markers (00:00 UTC) across both columns
+            graphCtx.save();
+            graphCtx.strokeStyle = 'rgba(255,255,255,0.45)';
+            graphCtx.lineWidth = 1.1;
+            graphCtx.setLineDash([3, 5]);
+            const day = 24 * 3600;
+            const firstMidnight = Math.ceil(startTime / day) * day;
+            for (let t = firstMidnight; t <= startTime + twoDaysInSeconds + 1; t += day) {
+              const rel = (t - startTime) / twoDaysInSeconds;
+              const xComp = padding.left + rel * colWidth;
+              const xAcc = rightColLeft + rel * colWidth;
+              graphCtx.beginPath();
+              graphCtx.moveTo(xComp, subTop);
+              graphCtx.lineTo(xComp, subBottom);
+              graphCtx.stroke();
+              graphCtx.beginPath();
+              graphCtx.moveTo(xAcc, subTop);
+              graphCtx.lineTo(xAcc, subBottom);
+              graphCtx.stroke();
+            }
+            graphCtx.restore();
+
+            // Left gutter info per component
+            const labelName = trackedComponentNames[i] || '';
+            const kIdx = trackedPairs[i] ? trackedPairs[i].index : -1;
+            let periodH = null;
+            if (kIdx !== -1) {
+              const key = labelName.toUpperCase();
+              periodH = periodHours[key] || (Omega[kIdx] ? (2*Math.PI / Omega[kIdx] / 3600) : null);
+            }
+            let ampStr = '-';
+            let phiStr = '-';
+            if (selectedStation !== -1 && kIdx !== -1) {
+              const amp = harm.amplitudes[kIdx] && Number.isFinite(harm.amplitudes[kIdx][selectedStation]) ? harm.amplitudes[kIdx][selectedStation] : NaN;
+              let phiVal = harm.phases[kIdx] && Number.isFinite(harm.phases[kIdx][selectedStation]) ? harm.phases[kIdx][selectedStation] : NaN;
+              // Convert phase to degrees if needed
+              if (Number.isFinite(phiVal)) {
+                const isDeg = (phiIsDegreesFlag === null) ? true : phiIsDegreesFlag; // default assume degrees
+                phiVal = isDeg ? phiVal : (phiVal * 180/Math.PI);
+                // normalize to [-180, 180]
+                phiVal = ((phiVal + 180) % 360 + 360) % 360 - 180;
+              }
+              if (Number.isFinite(amp)) ampStr = amp.toFixed(2) + ' m';
+              if (Number.isFinite(phiVal)) phiStr = phiVal.toFixed(1) + '°';
+            }
+
+            graphCtx.font = '10px Courier New';
+            graphCtx.textAlign = 'left';
+            graphCtx.textBaseline = 'top';
+            const gutterX = 8;
+            const line1Y = subTop + 2;
+            const line2Y = line1Y + 12;
+            const line3Y = line2Y + 12;
+            const line4Y = line3Y + 12;
+            const desc = componentDescriptions[labelName.toUpperCase()] || '';
+            // Wrap description to max 18 chars per line
+            function wrapText(str, maxChars) {
+              const words = str.split(' ');
+              const lines = [];
+              let current = '';
+              for (const w of words) {
+                const tryLine = current ? current + ' ' + w : w;
+                if (tryLine.length <= maxChars) current = tryLine;
+                else { if (current) lines.push(current); current = w; }
+              }
+              if (current) lines.push(current);
+              return lines;
+            }
+            const descLines = wrapText(desc, 18).slice(0, 2);
+            graphCtx.fillStyle = componentColors[i % componentColors.length];
+            graphCtx.fillText(`${labelName}`, gutterX, line1Y);
+            graphCtx.fillStyle = '#cccccc';
+            for (let li = 0; li < descLines.length; li++) {
+              graphCtx.fillText(descLines[li], gutterX, line1Y + 12 + li*12);
+            }
+            graphCtx.fillStyle = '#ffffff';
+            const periodText = (periodH && Number.isFinite(periodH)) ? `T=${periodH.toFixed(2)} h` : 'T=—';
+            const infoStartY = line1Y + 12 * (1 + descLines.length);
+            graphCtx.fillText(periodText, gutterX, infoStartY);
+            graphCtx.fillText(`A=${ampStr}`, gutterX, infoStartY + 12);
+            graphCtx.fillText(`φ=${phiStr}`, gutterX, infoStartY + 24);
+
+            // Y tick labels at left of axis
+            graphCtx.fillStyle = '#ffffff';
+            graphCtx.textAlign = 'right';
+            graphCtx.textBaseline = 'middle';
+            graphCtx.fillText('+1m', padding.left - 4, subTop);
+            graphCtx.fillText('0', padding.left - 4, yZero);
+            graphCtx.fillText('-1m', padding.left - 4, subBottom);
+
+            // Plot data line for this component (left column)
+            const history = graphData[i];
+            if (!history || history.length < 1 || !hasData) continue;
+
+            graphCtx.strokeStyle = componentColors[i % componentColors.length];
+            graphCtx.lineWidth = 1;
+            graphCtx.beginPath();
+
+            let moved = false;
+            for (let j = 0; j < history.length; j++) {
+              const time = history[j][0];
+              const value = history[j][1];
+              if (time < startTime) continue;
+
+              const x = padding.left + ((time - startTime) / twoDaysInSeconds) * colWidth;
+              const y = yZero - (value / maxAmplitude) * (subH / 2);
+
+              if (!moved) { graphCtx.moveTo(x, y); moved = true; }
+              else { graphCtx.lineTo(x, y); }
+            }
+            graphCtx.stroke();
+
+            // Plot accumulator line (right column)
+            // Accumulator is sum of all components up to and including this index (in display order)
+            graphCtx.strokeStyle = '#ffaa00';
+            graphCtx.lineWidth = 1;
+            graphCtx.beginPath();
+            moved = false;
+            // Build a time-synced accumulator by sampling latest history times for current component
+            for (let j = 0; j < history.length; j++) {
+              const time = history[j][0];
+              if (time < startTime) continue;
+              // Sum value at this time across components 0..i using nearest sample per series
+              let sumVal = 0;
+              for (let c = 0; c <= i; c++) {
+                const h = graphData[c];
+                if (!h || h.length === 0) continue;
+                // nearest by last index not after time
+                let idx = h.length - 1;
+                while (idx > 0 && h[idx][0] > time) idx--;
+                sumVal += h[idx][1];
+              }
+              const x = rightColLeft + ((time - startTime) / twoDaysInSeconds) * colWidth;
+              const y = yZero - (sumVal / maxAmplitude) * (subH / 2);
+              if (!moved) { graphCtx.moveTo(x, y); moved = true; }
+              else { graphCtx.lineTo(x, y); }
+            }
+            graphCtx.stroke();
+          }
+        }
+
+        function populateHistoricalData(timePoints, componentData) {
+          clearGraph();
+          
+          // Populate each component's graph data
+          for (let i = 0; i < trackedComponentNames.length && i < componentData.length; i++) {
+            for (let j = 0; j < timePoints.length; j++) {
+              graphData[i].push([timePoints[j], componentData[i][j]]);
+            }
+          }
+          
+          drawGraph();
+          console.log(`Populated ${timePoints.length} historical data points`);
+        }
+
+        function updateGraph(time, values) {
+          if (selectedStation === -1) return;
+          
+          for (let i = 0; i < trackedComponentNames.length && i < values.length; i++) {
+            graphData[i].push([time, values[i]]);
+            // Prune data older than 2 days from the latest point
+            const cutoffTime = time - twoDaysInSeconds;
+            while(graphData[i].length > 0 && graphData[i][0][0] < cutoffTime) {
+              graphData[i].shift();
+            }
+          }
+          
+          drawGraph();
+        }
 
         function tweenValues(targets, duration) {
           if (currentTween) cancelAnimationFrame(currentTween);
@@ -561,6 +961,73 @@
           currentTween = requestAnimationFrame(animateTween);
         }
 
+        closeGraphBtn.onclick = () => {
+          setSelectedStation(-1); // Deselect
+        };
+
+        function setSelectedStation(index) {
+          if (index === selectedStation) return;
+
+          selectedStation = index;
+
+          if (selectedStation !== -1) {
+            graphContainer.classList.add('visible');
+            graphInfo.innerHTML = `Tidal Components<br><span style="opacity:0.9">Lat: ${lats[selectedStation].toFixed(2)}, Lon: ${lons[selectedStation].toFixed(2)}</span><br>`;
+            clearGraph();
+            initGraph();
+            drawGraph(); // Draw the empty graph immediately
+            worker.postMessage({ type: 'set_selected_station', station: selectedStation, componentIndices: trackedComponentIndices });
+            
+            // Request 48 hours of historical data
+            const endTime = simTime;
+            const startTime = endTime - twoDaysInSeconds;
+            const timeStep = 300; // 5 minutes in seconds
+            worker.postMessage({ 
+              type: 'compute_historical', 
+              station: selectedStation, 
+              componentIndices: trackedComponentIndices,
+              startTime: startTime,
+              endTime: endTime,
+              timeStep: timeStep
+            });
+            console.log("Selected station:", selectedStation, `Lat: ${lats[selectedStation]}, Lon: ${lons[selectedStation]}`);
+          } else {
+            graphContainer.classList.remove('visible');
+            worker.postMessage({ type: 'set_selected_station', station: -1 });
+            updateHighlightTile(-1);
+            console.log("Deselected station.");
+          }
+        }
+
+        renderer.domElement.addEventListener('dblclick', (event) => {
+          const mouse = new THREE.Vector2();
+          mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+          mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, camera);
+        
+          const intersects = raycaster.intersectObject(earthSphere);
+        
+          if (intersects.length > 0) {
+            const intersectionPoint = intersects[0].point;
+            let best = -1, bestDistSq = Infinity;
+            const p = new THREE.Vector3();
+            for (let i=0; i<N; i++){
+              const b = i*3;
+              p.set(basePos[b], basePos[b+1], basePos[b+2]);
+              const distSq = p.distanceToSquared(intersectionPoint);
+              if (distSq < bestDistSq){
+                bestDistSq = distSq;
+                best = i;
+              }
+            }
+            if (best !== -1) {
+              setSelectedStation(best);
+            }
+          }
+        });
+
         function tweenSimTime(targetSimTime, duration) {
           if (currentTimeTween) cancelAnimationFrame(currentTimeTween);
           const wasPlaying = isPlaying;
@@ -592,6 +1059,7 @@
         invertBtn.onclick = () => {
           isLandShown = !isLandShown;
           invertBtn.classList.toggle('inverted', isLandShown);
+          updateLandColorVisibility();
 
           const targets = {
               gold: { slider: goldSlider, endValue: isLandShown ? 0.33 : 0 },
@@ -616,6 +1084,7 @@
         const minTileHeightMeters = 0.01; // avoid zero-height degeneracy
         const minTileHeightUnits = minTileHeightMeters * metersToUnits;
         let instancedTiles = null;
+        let highlightTile = null;
         const tileAxisX = new Float32Array(N*3); // lon tangent per instance
         const tileAxisY = new Float32Array(N*3); // normal per instance
         const tileAxisZ = new Float32Array(N*3); // lat tangent per instance
@@ -735,6 +1204,101 @@
           instancedTiles.instanceMatrix.needsUpdate = true;
         }
         buildInstancedTiles();
+
+        function createHighlightTile() {
+          const boxGeom = new THREE.BoxGeometry(1,1,1);
+          
+          // Custom shader material for vertical fade
+          const highlightMat = new THREE.ShaderMaterial({
+            uniforms: {
+              color: { value: new THREE.Color(0xffffff) },
+              opacity: { value: 0.10 },
+              tileHeight: { value: 1.0 }
+            },
+            vertexShader: `
+              varying vec3 vPosition;
+              void main() {
+                vPosition = position;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `,
+            fragmentShader: `
+              uniform vec3 color;
+              uniform float opacity;
+              uniform float tileHeight;
+              varying vec3 vPosition;
+              void main() {
+                // Map local Y position (-0.5 to +0.5) to 0-1 range
+                float normalizedY = vPosition.y + 0.5; // 0 at bottom, 1 at top
+                // Fade from 1 (bottom) to 0 (top) with consistent curve regardless of tile height
+                float fadeAmount = 1.0 - smoothstep(0.0, 1.0, normalizedY);
+                gl_FragColor = vec4(color, opacity * fadeAmount);
+              }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          });
+          
+          highlightTile = new THREE.Mesh(boxGeom, highlightMat);
+          highlightTile.visible = false;
+          highlightTile.renderOrder = 10; // Render after everything else
+          scene.add(highlightTile);
+        }
+        createHighlightTile();
+
+        function updateHighlightTile(stationIndex, elevation) {
+          if (stationIndex === -1) {
+            highlightTile.visible = false;
+            return;
+          }
+
+          if (land[stationIndex]) {
+            highlightTile.visible = false;
+            return;
+          }
+
+          const i = stationIndex;
+          const b = i * 3;
+          const e = elevation || 0;
+
+          // Align with the existing tile extrusion, using same positioning logic
+          const dispUnits = e * metersToUnits * exag; // Same scaling as regular tiles
+          
+          // Use precomputed axes from the regular tiles
+          axisX.set(tileAxisX[b], tileAxisX[b+1], tileAxisX[b+2]);
+          axisY.set(tileAxisY[b], tileAxisY[b+1], tileAxisY[b+2]);
+          axisZ.set(tileAxisZ[b], tileAxisZ[b+1], tileAxisZ[b+2]);
+          tmpMat.makeBasis(axisX, axisY, axisZ);
+          const quat = new THREE.Quaternion().setFromRotationMatrix(tmpMat);
+          
+          // Fixed visible base height + scaled component
+          const baseVisibleHeight = 1.8; // Fixed visible height in scene units (always present)
+          const scaledComponent = 1.0 * metersToUnits * exag; // Scales with exaggeration
+          const highlightHeight = baseVisibleHeight + Math.max(0, scaledComponent);
+          
+          // Calculate regular tile dimensions
+          const minElevUnits = -5.6 * metersToUnits * exag;
+          const regularTileHeight = Math.max(minTileHeightUnits, dispUnits - minElevUnits);
+          const regularTileBase = minElevUnits;
+          
+          // Total highlight height = regular tile height + our highlight extension
+          const totalHighlightHeight = regularTileHeight + highlightHeight;
+          
+          // Position highlight center starting from regular tile base
+          const highlightCenter = regularTileBase + totalHighlightHeight/2;
+          
+          const surfacePos = new THREE.Vector3(basePos[b], basePos[b+1], basePos[b+2]);
+          const tilePos = surfacePos.clone().addScaledVector(axisY, highlightCenter);
+          
+          highlightTile.position.copy(tilePos);
+          highlightTile.quaternion.copy(quat);
+          highlightTile.scale.set(tileSizeX[i] * 1.15, totalHighlightHeight, tileSizeZ[i] * 1.15);
+          highlightTile.material.uniforms.tileHeight.value = totalHighlightHeight;
+          highlightTile.visible = true;
+          
+          //console.log(`Highlight tile at station ${i}: pos=${tilePos.x.toFixed(2)}, ${tilePos.y.toFixed(2)}, ${tilePos.z.toFixed(2)}`);
+        }
         // Initialize range from slider to keep in sync
         range = parseFloat(rangeSlider.value);
         playBtn.onclick = ()=>{isPlaying=true;};
@@ -812,12 +1376,12 @@
             landBase: 0x000066,
             gold: 0xffd700,
           },
-          oceanic2: {
+          digital: {
             white: 0xE0FFFF,
             blue: 0x40E0D0,
             deep: 0x008080,
             landBase: 0x2F4F4F,
-            gold: 0xffd700,
+            gold: 0x39FF14,
           },
           oceanic3: {
             white: 0xADD8E6,
@@ -825,6 +1389,13 @@
             deep: 0x00008B,
             landBase: 0x191970,
             gold: 0xFFEC8B,
+          },
+          'ember-zoa': {
+            white: 0xFFFF00,
+            blue: 0xFF4500,
+            deep: 0x8B0000,
+            landBase: 0x4B0082,
+            gold: 0xEE82EE,
           },
           'deep-land': {
             white: 0xffffff,
@@ -855,13 +1426,31 @@
         let colorDeep = new THREE.Color();
         let landColorBase = new THREE.Color();
         let colorLand = new THREE.Color();
+        let currentThemeName = '';
+
+        function updateLandColorVisibility() {
+          const oceanicOptions = document.getElementById('oceanic-land-options');
+          const digitalOptions = document.getElementById('digital-land-options');
+          
+          oceanicOptions.style.display = (currentThemeName === 'oceanic' && isLandShown) ? 'flex' : 'none';
+          digitalOptions.style.display = (currentThemeName === 'digital' && isLandShown) ? 'flex' : 'none';
+        }
 
         function setColorway(name) {
           const scheme = colorways[name];
           if (!scheme) return;
+          currentThemeName = name;
+
+          if (name === 'digital') {
+            setDigitalLandColor('white', 0xFFFFFF);
+          } else if (name === 'oceanic') {
+            setOceanicLandColor('gold', 0xffd700);
+          }
+
+          updateLandColorVisibility();
 
           // Update active button style
-          document.querySelectorAll('#ui div button[id^="colorway-"]').forEach(btn => {
+          document.querySelectorAll('#main-colorway-buttons button').forEach(btn => {
             btn.classList.remove('active-colorway');
           });
           const activeBtn = document.getElementById(`colorway-${name}`);
@@ -885,8 +1474,48 @@
         }
 
         document.getElementById('colorway-oceanic').onclick = () => setColorway('oceanic');
-        document.getElementById('colorway-digital').onclick = () => setColorway('oceanic2'); // still uses oceanic2 internally
-        document.getElementById('colorway-algae').onclick = () => setColorway('magma'); // still uses magma internally
+        document.getElementById('colorway-digital').onclick = () => setColorway('digital');
+        document.getElementById('colorway-ember-zoa').onclick = () => setColorway('ember-zoa');
+
+        function setOceanicLandColor(colorName, hexValue) {
+          if (currentThemeName !== 'oceanic') return;
+
+          document.querySelectorAll('#oceanic-land-options button').forEach(btn => {
+            btn.classList.remove('active-colorway');
+          });
+          document.getElementById(`land-color-${colorName}-oceanic`).classList.add('active-colorway');
+
+          colorways.oceanic.gold = hexValue;
+          colorGold.setHex(hexValue);
+          const goldness = parseFloat(goldSlider.value);
+          colorLand.lerpColors(landColorBase, colorGold, goldness);
+          updateLandColors();
+        }
+
+        function setDigitalLandColor(colorName, hexValue) {
+          if (currentThemeName !== 'digital') return;
+          
+          // Update active button style
+          document.querySelectorAll('#digital-land-options button').forEach(btn => {
+            btn.classList.remove('active-colorway');
+          });
+          document.getElementById(`land-color-${colorName}`).classList.add('active-colorway');
+          
+          // Update color definition and apply it
+          colorways.digital.gold = hexValue;
+          colorGold.setHex(hexValue);
+          const goldness = parseFloat(goldSlider.value);
+          colorLand.lerpColors(landColorBase, colorGold, goldness);
+          updateLandColors();
+        }
+
+        document.getElementById('land-color-gold-oceanic').onclick = () => setOceanicLandColor('gold', 0xffd700);
+        document.getElementById('land-color-green-oceanic').onclick = () => setOceanicLandColor('green', 0x39FF14);
+        document.getElementById('land-color-gold').onclick = () => setDigitalLandColor('gold', 0xffd700);
+        document.getElementById('land-color-cyan').onclick = () => setDigitalLandColor('cyan', 0x00FFFF);
+        document.getElementById('land-color-white').onclick = () => setDigitalLandColor('white', 0xFFFFFF);
+        document.getElementById('land-color-green').onclick = () => setDigitalLandColor('green', 0x39FF14);
+
 
         // Set initial colorway
         setColorway('oceanic');
@@ -1020,6 +1649,19 @@
           }
           occluder.lookAt(camera.position);
           
+          // Oscillate highlight tile opacity
+          if (highlightTile && highlightTile.visible) {
+            // Opacity scales with exaggeration: 0.08 at min exag, 0.35 at max exag
+            const minOpacity = 0.12;
+            const maxOpacity = 0.45;
+            const minExag = 10; // From slider min
+            const maxExag = 1000000; // From slider max
+            const exagFactor = Math.min(1.0, Math.max(0.0, (exag - minExag) / (maxExag - minExag)));
+            const baseOpacity = minOpacity + (maxOpacity - minOpacity) * exagFactor;
+            const opacity = baseOpacity + 0.02 * Math.sin(ts * 0.002); // Add subtle breathing
+            highlightTile.material.uniforms.opacity.value = opacity;
+          }
+          
           prepareForBloom();
           bloomComposer.render();
           cleanupAfterBloom();
@@ -1028,7 +1670,9 @@
         }
 
         let scaleLogged = false;
+        let lastElevations = null;
         function applyElevations(elev){
+          lastElevations = elev; // Store for opacity calculation
           // Update positions and colors
           const colors = ptsGeom.attributes.color.array;
           const pos = ptsGeom.attributes.position.array;
