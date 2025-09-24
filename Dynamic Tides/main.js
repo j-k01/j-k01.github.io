@@ -6,10 +6,6 @@ import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/exam
 import { ShaderPass } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/postprocessing/ShaderPass.js';
 
 async function main() {
-  // Declare variables at the top to avoid hoisting issues
-  let lastElevations = null;
-  let colorLand = new THREE.Color();
-  
   // Load real harmonics exported from GOT5.5/5.6
   async function loadHarm(){
     const url = 'harmonics_demo.json';
@@ -115,9 +111,6 @@ async function main() {
   }).filter(Boolean);
   const trackedComponentIndices = trackedPairs.map(p => p.index);
   const trackedComponentNames = trackedPairs.map(p => p.name);
-  
-  // Add "Remaining" as the 6th component (sum of all others)
-  trackedComponentNames.push('Remaining');
   console.log('Tracking components:', trackedPairs);
 
   const componentDescriptions = {
@@ -128,8 +121,7 @@ async function main() {
     'K1': 'Lunisolar Diurnal',
     'O1': 'Principal Lunar Diurnal',
     'P1': 'Principal Solar Diurnal',
-    'Q1': 'Larger Lunar Elliptic Diurnal',
-    'Remaining': 'Sum of All Other Components'
+    'Q1': 'Larger Lunar Elliptic Diurnal'
   };
 
   function latLonFromVec(x,y,z){
@@ -187,29 +179,7 @@ async function main() {
     }
     if (type === 'result') { 
       if (ev.data.componentValues) {
-        // Process all component values and calculate remaining sum
-        const allValues = new Float32Array(ev.data.componentValues);
-        const processedValues = new Float32Array(6); // 5 tracked + 1 remaining
-        
-        // Copy the first 5 tracked components
-        for (let i = 0; i < Math.min(5, trackedComponentIndices.length); i++) {
-          const componentIndex = trackedComponentIndices[i];
-          if (componentIndex < allValues.length) {
-            processedValues[i] = allValues[componentIndex];
-          }
-        }
-        
-        // Calculate remaining components sum
-        let remainingSum = 0;
-        for (let k = 0; k < allValues.length; k++) {
-          // Skip if this component is already tracked individually
-          if (!trackedComponentIndices.includes(k)) {
-            remainingSum += allValues[k];
-          }
-        }
-        processedValues[5] = remainingSum;
-        
-        updateGraph(simTime, processedValues);
+        updateGraph(simTime, new Float32Array(ev.data.componentValues));
       }
       applyElevations(ev.data.elevations);
       // Update highlight tile with current elevation
@@ -222,33 +192,7 @@ async function main() {
         console.warn('Historical computation error:', ev.data.error);
         return;
       }
-      // Process historical data to include remaining components sum
-      const processedComponentData = [];
-      const timePoints = ev.data.timePoints;
-      
-      // Add the first 5 tracked components
-      for (let i = 0; i < Math.min(5, trackedComponentIndices.length); i++) {
-        const componentIndex = trackedComponentIndices[i];
-        if (componentIndex < ev.data.componentData.length) {
-          processedComponentData.push(ev.data.componentData[componentIndex]);
-        }
-      }
-      
-      // Calculate remaining components sum for each time point
-      const remainingData = [];
-      for (let j = 0; j < timePoints.length; j++) {
-        let remainingSum = 0;
-        for (let k = 0; k < ev.data.componentData.length; k++) {
-          // Skip if this component is already tracked individually
-          if (!trackedComponentIndices.includes(k)) {
-            remainingSum += ev.data.componentData[k][j] || 0;
-          }
-        }
-        remainingData.push(remainingSum);
-      }
-      processedComponentData.push(remainingData);
-      
-      populateHistoricalData(timePoints, processedComponentData);
+      populateHistoricalData(ev.data.timePoints, ev.data.componentData);
     }
   };
 
@@ -379,20 +323,20 @@ async function main() {
   let fps = 20;
   let exag = 250000;
   let range = 0.4;
-  // const playBtn = document.getElementById('play'); // Element not in HTML
-  // const pauseBtn = document.getElementById('pause'); // Element not in HTML
-  // const dtInput = document.getElementById('datetime'); // Element not in HTML
-  // const jumpBtn = document.getElementById('jump'); // Element not in HTML
-  // const fpsSlider = document.getElementById('fps'); // Element not in HTML
-  // const exagSlider = document.getElementById('exag'); // Element not in HTML
+  const playBtn = document.getElementById('play');
+  const pauseBtn = document.getElementById('pause');
+  const dtInput = document.getElementById('datetime');
+  const jumpBtn = document.getElementById('jump');
+  const fpsSlider = document.getElementById('fps');
+  const exagSlider = document.getElementById('exag');
   const rangeSlider = document.getElementById('range');
   const goldSlider = document.getElementById('gold');
   const oceanGlowSlider = document.getElementById('ocean-glow');
-  // const lockLightBtn = document.getElementById('lock-light-btn'); // Element not in HTML
-  // const invertBtn = document.getElementById('invert-btn'); // Element not in HTML
+  const lockLightBtn = document.getElementById('lock-light-btn');
+  const invertBtn = document.getElementById('invert-btn');
   
   let isLightLocked = false;
-  // lockLightBtn.textContent = isLightLocked ? '☀️ Follow Camera' : 'Lock ☀️'; // Element not in HTML
+  lockLightBtn.textContent = isLightLocked ? '☀️ Follow Camera' : 'Lock ☀️';
   let oceanGlow = 0.0;
   let isLandShown = false;
   let currentTween = null;
@@ -406,7 +350,7 @@ async function main() {
 
   const twoDaysInSeconds = 2 * 24 * 3600;
   const graphData = trackedComponentNames.map(() => []); // Array of arrays for each component's data points [time, value]
-  const componentColors = ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff', '#ff9f40'];
+  const componentColors = ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff'];
 
   function initGraph() {
     const dpr = window.devicePixelRatio || 1;
@@ -460,8 +404,7 @@ async function main() {
 
     // Subplot layout (two columns: left=component, right=accumulator)
     const num = Math.max(1, trackedComponentNames.length);
-    // Ensure all rows fit; allow smaller than 80px when num grows (e.g., 6 rows)
-    const subH = Math.max(60, Math.floor(plotHeight / num));
+    const subH = Math.max(80, Math.floor(plotHeight / num));
     const colGap = 10;
     const colWidth = (plotWidth - colGap) / 2;
 
@@ -524,40 +467,26 @@ async function main() {
 
       // Left gutter info per component
       const labelName = trackedComponentNames[i] || '';
-      const isRemaining = labelName === 'Remaining';
-      const kIdx = !isRemaining && trackedPairs[i] ? trackedPairs[i].index : -1;
-
+      const kIdx = trackedPairs[i] ? trackedPairs[i].index : -1;
       let periodH = null;
       if (kIdx !== -1) {
         const key = labelName.toUpperCase();
         periodH = periodHours[key] || (Omega[kIdx] ? (2*Math.PI / Omega[kIdx] / 3600) : null);
       }
-
       let ampStr = '-';
       let phiStr = '-';
-      if (selectedStation !== -1) {
-        if (kIdx !== -1) {
-          const amp = harm.amplitudes[kIdx]?.[selectedStation];
-          let phiVal = harm.phases[kIdx]?.[selectedStation];
-
-          if (Number.isFinite(amp)) ampStr = amp.toFixed(2) + ' m';
-          if (Number.isFinite(phiVal)) {
-            const isDeg = phiIsDegreesFlag === null ? true : phiIsDegreesFlag;
-            phiVal = isDeg ? phiVal : (phiVal * 180 / Math.PI);
-            phiVal = ((phiVal + 180) % 360 + 360) % 360 - 180; // normalize
-            phiStr = phiVal.toFixed(1) + '°';
-          }
-        } else if (isRemaining) {
-            let totalAmpSq = 0;
-            for (let k = 0; k < K; k++) {
-                if (!trackedComponentIndices.includes(k)) {
-                    const amp = harm.amplitudes[k]?.[selectedStation] || 0;
-                    totalAmpSq += amp * amp;
-                }
-            }
-            ampStr = Math.sqrt(totalAmpSq).toFixed(2) + ' m';
-            phiStr = '—';
+      if (selectedStation !== -1 && kIdx !== -1) {
+        const amp = harm.amplitudes[kIdx] && Number.isFinite(harm.amplitudes[kIdx][selectedStation]) ? harm.amplitudes[kIdx][selectedStation] : NaN;
+        let phiVal = harm.phases[kIdx] && Number.isFinite(harm.phases[kIdx][selectedStation]) ? harm.phases[kIdx][selectedStation] : NaN;
+        // Convert phase to degrees if needed
+        if (Number.isFinite(phiVal)) {
+          const isDeg = (phiIsDegreesFlag === null) ? true : phiIsDegreesFlag; // default assume degrees
+          phiVal = isDeg ? phiVal : (phiVal * 180/Math.PI);
+          // normalize to [-180, 180]
+          phiVal = ((phiVal + 180) % 360 + 360) % 360 - 180;
         }
+        if (Number.isFinite(amp)) ampStr = amp.toFixed(2) + ' m';
+        if (Number.isFinite(phiVal)) phiStr = phiVal.toFixed(1) + '°';
       }
 
       graphCtx.font = '10px Courier New';
@@ -586,14 +515,7 @@ async function main() {
         graphCtx.fillText(descLines[li], gutterX, line1Y + 12 + li*12);
       }
       graphCtx.fillStyle = '#ffffff';
-      
-      let periodText = 'T=—';
-      if (isRemaining) {
-        periodText = 'T=—'; // No single period for combined components
-      } else if (periodH && Number.isFinite(periodH)) {
-        periodText = `T=${periodH.toFixed(2)} h`;
-      }
-      
+      const periodText = (periodH && Number.isFinite(periodH)) ? `T=${periodH.toFixed(2)} h` : 'T=—';
       const infoStartY = line1Y + 12 * (1 + descLines.length);
       graphCtx.fillText(periodText, gutterX, infoStartY);
       graphCtx.fillText(`A=${ampStr}`, gutterX, infoStartY + 12);
@@ -638,9 +560,7 @@ async function main() {
         const time = history[j][0];
         if (time < startTime) continue;
         let sumVal = 0;
-        // For the 6th component (remaining), sum all 6 components
-        const maxComponents = (i === 5) ? 6 : (i + 1);
-        for (let c = 0; c < maxComponents; c++) {
+        for (let c = 0; c <= i; c++) {
           const h = graphData[c];
           if (!h || h.length === 0) continue;
           let idx = h.length - 1;
@@ -658,29 +578,24 @@ async function main() {
 
   function populateHistoricalData(timePoints, componentData) {
     clearGraph();
-    // componentData now contains 6 arrays: 5 tracked components + 1 remaining sum
-    for (let i = 0; i < componentData.length && i < 6; i++) {
+    for (let i = 0; i < trackedComponentNames.length && i < componentData.length; i++) {
       for (let j = 0; j < timePoints.length; j++) {
         graphData[i].push([timePoints[j], componentData[i][j]]);
       }
     }
-    
     drawGraph();
     console.log(`Populated ${timePoints.length} historical data points`);
   }
 
   function updateGraph(time, values) {
     if (selectedStation === -1) return;
-    
-    // values now contains 6 values: 5 tracked components + 1 remaining sum
-    for (let i = 0; i < values.length && i < 6; i++) {
+    for (let i = 0; i < trackedComponentNames.length && i < values.length; i++) {
       graphData[i].push([time, values[i]]);
       const cutoffTime = time - twoDaysInSeconds;
       while(graphData[i].length > 0 && graphData[i][0][0] < cutoffTime) {
         graphData[i].shift();
       }
     }
-    
     drawGraph();
   }
 
@@ -736,17 +651,15 @@ async function main() {
       graphInfo.innerHTML = `Tidal Components<br><span style="opacity:0.9">Lat: ${lats[selectedStation].toFixed(2)}, Lon: ${lons[selectedStation].toFixed(2)}</span><br>`;
       clearGraph();
       initGraph();
-      drawGraph(); // Draw the empty graph immediately
-      // Send all component indices to worker (including remaining calculation)
-      const allComponentIndices = Array.from({length: K}, (_, i) => i);
-      worker.postMessage({ type: 'set_selected_station', station: selectedStation, componentIndices: allComponentIndices });
+      drawGraph();
+      worker.postMessage({ type: 'set_selected_station', station: selectedStation, componentIndices: trackedComponentIndices });
       const endTime = simTime;
       const startTime = endTime - twoDaysInSeconds;
       const timeStep = 300;
       worker.postMessage({ 
         type: 'compute_historical', 
         station: selectedStation, 
-        componentIndices: allComponentIndices,
+        componentIndices: trackedComponentIndices,
         startTime: startTime,
         endTime: endTime,
         timeStep: timeStep
@@ -889,23 +802,23 @@ async function main() {
     currentTimeTween = requestAnimationFrame(animateTimeTween);
   }
 
-  // invertBtn.onclick = () => { // Element not in HTML
-  //   isLandShown = !isLandShown;
-  //   invertBtn.classList.toggle('inverted', isLandShown);
-  //   updateLandColorVisibility();
-  //
-  //   const targets = {
-  //       gold: { slider: goldSlider, endValue: isLandShown ? 0.33 : 0 },
-  //       ocean: { slider: oceanGlowSlider, endValue: isLandShown ? 0 : 0.15 }
-  //   };
-  //
-  //   tweenValues(targets, 1000);
-  // };
+  invertBtn.onclick = () => {
+    isLandShown = !isLandShown;
+    invertBtn.classList.toggle('inverted', isLandShown);
+    updateLandColorVisibility();
 
-  // lockLightBtn.onclick = (e) => { // Element not in HTML
-  //   isLightLocked = !isLightLocked;
-  //   lockLightBtn.textContent = isLightLocked ? '☀️ Follow Camera' : 'Lock ☀️';
-  // };
+    const targets = {
+        gold: { slider: goldSlider, endValue: isLandShown ? 0.33 : 0 },
+        ocean: { slider: oceanGlowSlider, endValue: isLandShown ? 0 : 0.15 }
+    };
+
+    tweenValues(targets, 1000);
+  };
+
+  lockLightBtn.onclick = (e) => {
+    isLightLocked = !isLightLocked;
+    lockLightBtn.textContent = isLightLocked ? '☀️ Follow Camera' : 'Lock ☀️';
+  };
   // Instanced tile extrusion (per-vertex thin boxes on the sphere)
   const toRad = Math.PI/180;
   const tileFill = 0.95; // fraction of cell coverage in lat/lon
@@ -1094,7 +1007,7 @@ async function main() {
     const dispUnits = e * metersToUnits * exag; 
     
     axisX.set(tileAxisX[b], tileAxisX[b+1], tileAxisX[b+2]);
-    axisY.set(tileAxisY[b], tileAxisY[b+1], tileAxisX[b+2]);
+    axisY.set(tileAxisY[b], tileAxisY[b+1], tileAxisY[b+2]);
     axisZ.set(tileAxisZ[b], tileAxisZ[b+1], tileAxisZ[b+2]);
     tmpMat.makeBasis(axisX, axisY, axisZ);
     const quat = new THREE.Quaternion().setFromRotationMatrix(tmpMat);
@@ -1122,14 +1035,14 @@ async function main() {
   }
   
   range = parseFloat(rangeSlider.value);
-  // playBtn.onclick = ()=>{isPlaying=true;}; // Element not in HTML
-  // pauseBtn.onclick = ()=>{isPlaying=false;}; // Element not in HTML
-  // fpsSlider.oninput = (e)=>{ // Element not in HTML
-  //   fps = parseInt(e.target.value,10); 
-  // };
-  // exagSlider.oninput = (e)=>{ // Element not in HTML
-  //   exag = parseInt(e.target.value,10);
-  // };
+  playBtn.onclick = ()=>{isPlaying=true;};
+  pauseBtn.onclick = ()=>{isPlaying=false;};
+  fpsSlider.oninput = (e)=>{ 
+    fps = parseInt(e.target.value,10); 
+  };
+  exagSlider.oninput = (e)=>{
+    exag = parseInt(e.target.value,10);
+  };
   rangeSlider.oninput = (e)=>{ 
     range = parseFloat(e.target.value); 
   };
@@ -1279,7 +1192,7 @@ async function main() {
   }
 
   let scaleLogged = false;
-  
+  let lastElevations = null;
   function applyElevations(elev){
     lastElevations = elev;
     const colors = ptsGeom.attributes.color.array;
@@ -1512,7 +1425,7 @@ async function main() {
   let colorBlue = new THREE.Color();
   let colorDeep = new THREE.Color();
   let landColorBase = new THREE.Color();
-  // let colorLand = new THREE.Color(); // Moved to top of function
+  let colorLand = new THREE.Color();
   let currentThemeName = '';
 
   function updateLandColorVisibility() {
@@ -1567,7 +1480,7 @@ async function main() {
     document.querySelectorAll('#oceanic-land-options button').forEach(btn => {
       btn.classList.remove('active-colorway');
     });
-    // document.getElementById(`land-color-${colorName}-oceanic`).classList.add('active-colorway'); // Element not in HTML
+    document.getElementById(`land-color-${colorName}-oceanic`).classList.add('active-colorway');
 
     colorways.oceanic.gold = hexValue;
     colorGold.setHex(hexValue);
@@ -1582,7 +1495,7 @@ async function main() {
     document.querySelectorAll('#digital-land-options button').forEach(btn => {
       btn.classList.remove('active-colorway');
     });
-    // document.getElementById(`land-color-${colorName}`).classList.add('active-colorway'); // Element not in HTML
+    document.getElementById(`land-color-${colorName}`).classList.add('active-colorway');
     
     colorways.digital.gold = hexValue;
     colorGold.setHex(hexValue);
@@ -1591,18 +1504,18 @@ async function main() {
     updateLandColors();
   }
 
-  // document.getElementById('land-color-gold-oceanic').onclick = () => setOceanicLandColor('gold', 0xffd700); // Element not in HTML
-  // document.getElementById('land-color-green-oceanic').onclick = () => setOceanicLandColor('green', 0x39FF14); // Element not in HTML
-  // document.getElementById('land-color-gold').onclick = () => setDigitalLandColor('gold', 0xffd700); // Element not in HTML
-  // document.getElementById('land-color-cyan').onclick = () => setDigitalLandColor('cyan', 0x00FFFF); // Element not in HTML
-  // document.getElementById('land-color-white').onclick = () => setDigitalLandColor('white', 0xFFFFFF); // Element not in HTML
-  // document.getElementById('land-color-green').onclick = () => setDigitalLandColor('green', 0x39FF14); // Element not in HTML
+  document.getElementById('land-color-gold-oceanic').onclick = () => setOceanicLandColor('gold', 0xffd700);
+  document.getElementById('land-color-green-oceanic').onclick = () => setOceanicLandColor('green', 0x39FF14);
+  document.getElementById('land-color-gold').onclick = () => setDigitalLandColor('gold', 0xffd700);
+  document.getElementById('land-color-cyan').onclick = () => setDigitalLandColor('cyan', 0x00FFFF);
+  document.getElementById('land-color-white').onclick = () => setDigitalLandColor('white', 0xFFFFFF);
+  document.getElementById('land-color-green').onclick = () => setDigitalLandColor('green', 0x39FF14);
 
   setColorway('oceanic');
 
-  // document.getElementById('time-box').onclick = () => {
-  //   // document.getElementById('datetime').showPicker(); // Element not in HTML
-  // };
+  document.getElementById('time-box').onclick = () => {
+    document.getElementById('datetime').showPicker();
+  };
 
   function animateStart(){
     animate(0);

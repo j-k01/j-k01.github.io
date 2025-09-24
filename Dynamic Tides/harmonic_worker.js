@@ -146,13 +146,13 @@ self.onmessage = (ev) => {
     
     let componentValues = null;
     if (selectedStation !== -1 && trackedComponentIndices.length > 0) {
-      // Always compute all components when we have a selected station
-      componentValues = new Float32Array(numConstituents);
+      componentValues = new Float32Array(trackedComponentIndices.length);
       const base = selectedStation * numConstituents;
-      for (let k = 0; k < numConstituents; k++) {
+      for (let i = 0; i < trackedComponentIndices.length; i++) {
+        const k = trackedComponentIndices[i];
         const Ak = amplitudes[base + k];
         const term = Ak * (cosPhi[base + k] * cosAlpha[k] + sinPhi[base + k] * sinAlpha[k]);
-        componentValues[k] = Number.isFinite(term) ? term : 0;
+        componentValues[i] = Number.isFinite(term) ? term : 0;
       }
     }
 

@@ -190,7 +190,7 @@ input[type=range]::-moz-range-thumb {
     overflow-x: hidden; /* Prevent horizontal scrolling */
   }
   #tidal-graph {
-    min-height: 620px; /* Ensure graph maintains its natural height for 6 components */
+    min-height: 520px; /* Ensure graph maintains its natural height */
   }
   
   /* Hide style controls and exaggeration slider when graph is open on mobile */
