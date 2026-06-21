@@ -95,6 +95,7 @@ const CONFIG = {
     // presentation scale — NOT the camera, so the stars/backdrop stay fixed).
     foldedZoom: 0.577,            // folded globe default
     foldedZoomByType: {
+        cube: 0.72,
         pentagonalBipyramid: 0.72,
     },
     // Per-shape unfolded-net scale — the nets differ a lot in size. Falls back
