@@ -110,6 +110,9 @@ const CONFIG = {
     // Compute the unfolded net's in-plane rotation from the final hinge
     // geometry so geographic south->north points vertically upward on screen.
     orientUnfoldedPoleAxisVertical: true,
+    unfoldTwistOffsetByType: {
+        waterman5: -Math.PI / 2,
+    },
     initialPolyhedron: 'dymaxionIcosa',
     backgroundColor: 0x2563c8,          // scratchpad azure
     // Picker shapes in display order — the four the presentation supports.
@@ -1051,6 +1054,7 @@ class PresentationApp {
         // the old Unfold button.
         if (this.controls) this.controls.enableRotate = false;
         const canvas = this.renderer.domElement;
+        canvas.style.touchAction = 'none';
         const TAP_SLOP = 6;            // px of travel under which it counts as a tap
         const activeTouches = new Map();
         let dragging = false, activePointerId = null;
@@ -1062,15 +1066,69 @@ class PresentationApp {
             try { canvas.releasePointerCapture(id); } catch (err) {}
         };
 
+        const touchPair = () => {
+            if (activeTouches.size !== 2) return null;
+            const pts = Array.from(activeTouches.values());
+            const dx = pts[1].x - pts[0].x;
+            const dy = pts[1].y - pts[0].y;
+            return {
+                x: (pts[0].x + pts[1].x) * 0.5,
+                y: (pts[0].y + pts[1].y) * 0.5,
+                dist: Math.hypot(dx, dy),
+            };
+        };
+
+        let lastTouchPair = null;
+        const beginTwoFingerGesture = () => {
+            suppressTap = true;
+            dragging = false;
+            releasePointer(activePointerId);
+            activePointerId = null;
+            lastTouchPair = touchPair();
+        };
+
+        const applyPinchZoom = (ratio) => {
+            if (!Number.isFinite(ratio) || ratio <= 0 || !this.camera) return;
+            const target = (this.controls && this.controls.target)
+                ? this.controls.target
+                : new THREE.Vector3();
+            const offset = this.camera.position.clone().sub(target);
+            const dist = offset.length();
+            if (dist <= 1e-6) return;
+            const minD = this.controls && Number.isFinite(this.controls.minDistance)
+                ? this.controls.minDistance
+                : 1;
+            const maxD = this.controls && Number.isFinite(this.controls.maxDistance)
+                ? this.controls.maxDistance
+                : Infinity;
+            const nextDist = Math.max(minD, Math.min(maxD, dist / ratio));
+            offset.setLength(nextDist);
+            this.camera.position.copy(target).add(offset);
+            this.camera.updateMatrixWorld();
+        };
+
+        const updateTwoFingerGesture = () => {
+            const pair = touchPair();
+            if (!pair) {
+                lastTouchPair = null;
+                return;
+            }
+            if (lastTouchPair) {
+                if (this.modeI && this.modeI.applyUserRotation) {
+                    this.modeI.applyUserRotation(pair.x - lastTouchPair.x, pair.y - lastTouchPair.y);
+                }
+                if (lastTouchPair.dist > 1e-3) applyPinchZoom(pair.dist / lastTouchPair.dist);
+            }
+            lastTouchPair = pair;
+        };
+
         canvas.addEventListener('pointerdown', (e) => {
             if (e.button !== 0) return;
             if (e.pointerType === 'touch') {
                 activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
                 if (activeTouches.size > 1) {
-                    suppressTap = true;
-                    dragging = false;
-                    releasePointer(activePointerId);
-                    activePointerId = null;
+                    canvas.setPointerCapture(e.pointerId);
+                    beginTwoFingerGesture();
                     return;
                 }
             }
@@ -1085,7 +1143,10 @@ class PresentationApp {
             if (e.pointerType === 'touch') {
                 if (!activeTouches.has(e.pointerId)) return;
                 activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-                if (activeTouches.size > 1) return;
+                if (activeTouches.size > 1) {
+                    updateTwoFingerGesture();
+                    return;
+                }
             }
             if (!dragging || e.pointerId !== activePointerId
                 || !this.modeI || !this.modeI.applyUserRotation) return;
@@ -1097,8 +1158,10 @@ class PresentationApp {
         });
         canvas.addEventListener('pointerup', (e) => {
             if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
+            if (activeTouches.size < 2) lastTouchPair = null;
             if (!dragging || e.pointerId !== activePointerId) {
                 if (activeTouches.size === 0) suppressTap = false;
+                releasePointer(e.pointerId);
                 return;
             }
             dragging = false;
@@ -1112,6 +1175,7 @@ class PresentationApp {
         });
         canvas.addEventListener('pointercancel', (e) => {
             if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
+            if (activeTouches.size < 2) lastTouchPair = null;
             if (e.pointerId === activePointerId || activeTouches.size === 0) {
                 dragging = false;
                 activePointerId = null;
@@ -1233,7 +1297,7 @@ class PresentationApp {
         // Align the final net from its actual unfolded geometry rather than a
         // hand-tuned twist table.
         if (c.orientUnfoldedPoleAxisVertical && m.setFinalPoleAxisVertical) {
-            m.setFinalPoleAxisVertical();
+            m.setFinalPoleAxisVertical(this._unfoldTwistOffset());
         }
         // Backing tile (parchment-clouds-light slab under the unfolded net)
         // is explicitly off in the presentation — gate the auto-show with
@@ -1352,10 +1416,17 @@ class PresentationApp {
     _prepareUnfoldTarget() {
         this.modeI.setCameraPos(this.camera.position, this.camera);
         if (this.config.orientUnfoldedPoleAxisVertical && this.modeI.setFinalPoleAxisVertical) {
-            this.modeI.setFinalPoleAxisVertical();
+            this.modeI.setFinalPoleAxisVertical(this._unfoldTwistOffset());
         } else if (this.modeI.captureFaceParentTarget) {
             this.modeI.captureFaceParentTarget();
         }
+    }
+
+    _unfoldTwistOffset() {
+        const byType = this.config.unfoldTwistOffsetByType;
+        return (byType && Number.isFinite(byType[this._polyhedronType]))
+            ? byType[this._polyhedronType]
+            : 0;
     }
 
     selectPolyhedron(type) {

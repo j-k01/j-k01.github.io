@@ -8830,7 +8830,7 @@ export class ModeI {
         this._applyFit();
     }
 
-    computeFinalPoleAxisTwistRad() {
+    computeFinalPoleAxisTwistRad(extraTwistRad = 0) {
         const finalMats = this._computeFinalFaceMatrices();
         if (!finalMats) return null;
 
@@ -8862,12 +8862,13 @@ export class ModeI {
         axisWorld.normalize();
 
         const theta = Math.atan2(axisWorld.dot(worldUp), axisWorld.dot(worldRight));
-        const twist = Math.PI / 2 - theta;
+        const extraTwist = Number.isFinite(extraTwistRad) ? extraTwistRad : 0;
+        const twist = Math.PI / 2 - theta + extraTwist;
         return Math.atan2(Math.sin(twist), Math.cos(twist));
     }
 
-    setFinalPoleAxisVertical() {
-        const twist = this.computeFinalPoleAxisTwistRad();
+    setFinalPoleAxisVertical(extraTwistRad = 0) {
+        const twist = this.computeFinalPoleAxisTwistRad(extraTwistRad);
         if (Number.isFinite(twist)) {
             this.setFinalTwistRad(twist);
             return twist;
