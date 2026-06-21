@@ -6730,6 +6730,7 @@ export class ModeI {
         // SVG country-path stroking step when re-visiting a polyhedron
         // with the same Earth preset (~1 s rebuild → ~30 ms reuse).
         this._earthCanvasCache = new Map();
+        this._earthCanvasWarmJobs = new Map();
 
         // Pre-baked parchment sphere maps (equirectangular). Keyed by preset
         // slug ('cartographer' | 'cottonRag'). Loaded by main.js from
@@ -8132,6 +8133,7 @@ export class ModeI {
 
     setEarthImage(img) {
         this._earthImage = img || null;
+        this._earthCanvasWarmJobs.clear();
         if (this._earthSvgPaths && this._earthStyle) return;   // SVG pipeline owns it
         if (this.group.visible) this._rebuildFaceCanvases();
         else this._faceMeshesDirty = true;
@@ -8140,6 +8142,7 @@ export class ModeI {
     setEarthSvgPaths(pathData, style) {
         this._earthSvgPaths = pathData || null;
         this._earthStyle = style || null;
+        this._earthCanvasWarmJobs.clear();
         if (this.group.visible) this._rebuildFaceCanvases();
         else this._faceMeshesDirty = true;
     }
@@ -8234,6 +8237,82 @@ export class ModeI {
         }
     }
 
+    warmEarthCanvasCacheFor(polyhedron, maxFaces = 1) {
+        if (!polyhedron || (!this._earthSvgPaths && !this._earthImage)) return true;
+        const polyType = polyhedron.type;
+        const faces = modeIFacesForPolyhedron(polyhedron);
+        if (!polyType || !faces || !faces.length) return true;
+
+        const bgMode = this._faceBgMode;
+        const cached = this._earthCanvasCache.get(polyType);
+        if (cached
+            && cached.paths === this._earthSvgPaths
+            && cached.style === this._earthStyle
+            && cached.image === this._earthImage
+            && cached.bgMode === bgMode
+            && cached.grainEnabled === this._grainEnabled
+            && cached.canvases.length === faces.length) {
+            return true;
+        }
+
+        if (bgMode !== 'plain') return true;
+
+        let job = this._earthCanvasWarmJobs.get(polyType);
+        if (!job
+            || job.paths !== this._earthSvgPaths
+            || job.style !== this._earthStyle
+            || job.image !== this._earthImage
+            || job.bgMode !== bgMode
+            || job.grainEnabled !== this._grainEnabled
+            || job.faces.length !== faces.length) {
+            job = {
+                paths: this._earthSvgPaths,
+                style: this._earthStyle,
+                image: this._earthImage,
+                bgMode,
+                grainEnabled: this._grainEnabled,
+                faces,
+                canvases: [],
+                next: 0,
+            };
+            this._earthCanvasWarmJobs.set(polyType, job);
+        }
+
+        const limit = Math.max(1, maxFaces | 0);
+        let count = 0;
+        while (job.next < job.faces.length && count < limit) {
+            const face = job.faces[job.next];
+            let canvas = null;
+            if (job.paths && job.style) {
+                canvas = renderEarthFaceFromSvgPaths(
+                    face, job.faces, job.paths, job.style,
+                    this._faceCanvasSize, null, job.grainEnabled,
+                );
+            } else if (job.image) {
+                canvas = renderEarthFaceFromRaster(
+                    face, job.faces, job.image, this._faceCanvasSize, null,
+                );
+            }
+            job.canvases[job.next] = canvas;
+            job.next += 1;
+            count += 1;
+        }
+
+        if (job.next >= job.faces.length) {
+            this._earthCanvasCache.set(polyType, {
+                paths: job.paths,
+                style: job.style,
+                image: job.image,
+                bgMode: job.bgMode,
+                grainEnabled: job.grainEnabled,
+                canvases: job.canvases,
+            });
+            this._earthCanvasWarmJobs.delete(polyType);
+            return true;
+        }
+        return false;
+    }
+
     setFacesOpaque(v) {
         this._facesOpaque = !!v;
         this._applyFaceBlendState();
@@ -8296,6 +8375,7 @@ export class ModeI {
         const next = !!v;
         if (this._grainEnabled === next) return;
         this._grainEnabled = next;
+        this._earthCanvasWarmJobs.clear();
         const polyType = this.polyhedron && this.polyhedron.type;
         if (polyType) this._earthCanvasCache.delete(polyType);
         if (this.group.visible) this._rebuildFaceCanvases();
@@ -8312,6 +8392,7 @@ export class ModeI {
         if (!VALID.has(mode)) return;
         if (mode === this._faceBgMode) return;
         this._faceBgMode = mode;
+        this._earthCanvasWarmJobs.clear();
         const polyType = this.polyhedron && this.polyhedron.type;
         if (polyType) this._earthCanvasCache.delete(polyType);
         if (mode !== 'plain' && !this._parchmentImageData.has(mode)) {

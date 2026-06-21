@@ -61,15 +61,15 @@ const CONFIG = {
 
     // Animation behavior. Direction-dependent fold-mode + easing — the
     // unfold rolls out as a depth-staggered wave with smooth in-out
-    // pacing, the fold collapses everything at once with an in-easing
-    // pull-into-place. Setting these on each direction change only
+    // pacing, the fold collapses everything at once with a start-fast
+    // close. Setting these on each direction change only
     // affects the hinge timing; the at-t=1 orientation target is
     // captured separately so the world rotation does not snap.
     foldSpeed: 0.35,                    // ~2.9s end-to-end
     unfoldFoldMode: 'wave',
     unfoldEasing:   'easeInOut',
     foldFoldMode:   'simultaneous',
-    foldEasing:     'easeOut',          // t runs backward on fold, so this closes as visual ease-in
+    foldEasing:     'easeIn',           // t runs backward on fold, so this closes start-fast
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
     // that suits its geometry; falls back to 'steepest' if not listed.
     unfoldStrategyByType: {
@@ -127,6 +127,11 @@ const CONFIG = {
     // because finer densities take longer to rebuild — give each
     // refinement room to render before queuing the next.
     progressiveStepDelays: [0, 200, 300, 500, 700],
+    backgroundPreloadEnabled: true,
+    backgroundPreloadStartDelayMs: 900,
+    backgroundPreloadIdleTimeoutMs: 1800,
+    backgroundPreloadQuietWindowMs: 650,
+    backgroundPreloadFacesPerIdle: 1,
 };
 
 // =====================================================================
@@ -1015,6 +1020,14 @@ class PresentationApp {
         this._earthPaths = null;
         this._earthStyle = null;
         this._starMap = null;
+        this._polyhedronCache = new Map();
+        this._initialContoursReady = false;
+        this._initialContourPollTimer = null;
+        this._backgroundPreloadStarted = false;
+        this._backgroundPreloadQueue = [];
+        this._backgroundPreloadTimer = null;
+        this._backgroundPreloadIdleHandle = null;
+        this._lastUserActivityMs = 0;
 
         this._setupRenderer();
         this._setupScene();
@@ -1070,6 +1083,9 @@ class PresentationApp {
         const nowMs = () => (typeof performance !== 'undefined')
             ? performance.now()
             : Date.now();
+        const markUserActivity = () => {
+            this._lastUserActivityMs = nowMs();
+        };
 
         const capturePointer = (id) => {
             if (id == null) return;
@@ -1185,6 +1201,7 @@ class PresentationApp {
         };
 
         canvas.addEventListener('pointerdown', (e) => {
+            markUserActivity();
             if (e.button !== 0) return;
             if (e.pointerType === 'touch') {
                 activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1201,6 +1218,7 @@ class PresentationApp {
             capturePointer(e.pointerId);
         });
         canvas.addEventListener('pointermove', (e) => {
+            markUserActivity();
             if (e.pointerType === 'touch') {
                 if (!activeTouches.has(e.pointerId)) return;
                 activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1218,6 +1236,7 @@ class PresentationApp {
             this.modeI.applyUserRotation(dx, dy);
         });
         canvas.addEventListener('pointerup', (e) => {
+            markUserActivity();
             if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
             if (activeTouches.size < 2) lastTouchPair = null;
             if (!dragging || e.pointerId !== activePointerId) {
@@ -1236,6 +1255,7 @@ class PresentationApp {
             if (activeTouches.size === 0) suppressTap = false;
         });
         canvas.addEventListener('pointercancel', (e) => {
+            markUserActivity();
             if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
             if (activeTouches.size < 2) lastTouchPair = null;
             if (e.pointerId === activePointerId || activeTouches.size === 0) {
@@ -1245,6 +1265,7 @@ class PresentationApp {
             if (activeTouches.size === 0) suppressTap = false;
             releasePointer(e.pointerId);
         });
+        canvas.addEventListener('wheel', markUserActivity, { passive: true });
     }
 
     _setupRenderer() {
@@ -1304,11 +1325,20 @@ class PresentationApp {
         this.scene.add(fill);
     }
 
+    _getPolyhedron(type) {
+        let poly = this._polyhedronCache.get(type);
+        if (!poly) {
+            poly = buildPolyhedron(type, this.config.sphereRadius);
+            this._polyhedronCache.set(type, poly);
+        }
+        return poly;
+    }
+
     // Build (or rebuild) the polyhedron + ModeI for the current type. On
     // first call this constructs ModeI; subsequent calls reuse the same
     // instance via setPolyhedron so animation state is preserved.
     _buildPolyhedronAndMode() {
-        const poly = buildPolyhedron(this._polyhedronType, this.config.sphereRadius);
+        const poly = this._getPolyhedron(this._polyhedronType);
         if (!this.modeI) {
             // starCapacity > 0 wires the camera-pinned twinkle-star overlay
             // inside ModeI. _loadStars hands the catalog to setStarPropsFn
@@ -1413,9 +1443,93 @@ class PresentationApp {
                 this._refineTimer = setTimeout(tick, delays[i]);
             } else {
                 this._refineTimer = null;
+                this._waitForInitialContourCache();
             }
         };
         tick();
+    }
+
+    _waitForInitialContourCache() {
+        if (this._initialContoursReady || this._initialContourPollTimer) return;
+        const target = this.config.progressiveLadder[this.config.progressiveLadder.length - 1];
+        const poll = () => {
+            this._initialContourPollTimer = null;
+            if (!this.modeI || this._backgroundPreloadStarted) return;
+            if (this.modeI.hasContourCacheFor(this._polyhedronType, target)) {
+                this._initialContoursReady = true;
+                this._tryStartBackgroundPreloads();
+                return;
+            }
+            this._initialContourPollTimer = setTimeout(poll, 350);
+        };
+        this._initialContourPollTimer = setTimeout(poll, 350);
+    }
+
+    _tryStartBackgroundPreloads() {
+        const c = this.config;
+        if (!c.backgroundPreloadEnabled || this._backgroundPreloadStarted) return;
+        if (!this._initialContoursReady || !this._earthPaths || !this._earthStyle) return;
+        if (!this.modeI || !this.modeI.warmEarthCanvasCacheFor) return;
+
+        this._backgroundPreloadStarted = true;
+        this._backgroundPreloadQueue = c.pickerShapes
+            .filter(type => type !== this._polyhedronType)
+            .map(type => ({ type }));
+        if (this._backgroundPreloadQueue.length) {
+            this._scheduleBackgroundPreloadStep(c.backgroundPreloadStartDelayMs);
+        }
+    }
+
+    _scheduleBackgroundPreloadStep(delayMs = 0) {
+        if (this._backgroundPreloadTimer || this._backgroundPreloadIdleHandle) return;
+        const requestIdle = () => {
+            const run = (deadline) => {
+                this._backgroundPreloadIdleHandle = null;
+                this._runBackgroundPreloadStep(deadline);
+            };
+            if (window.requestIdleCallback) {
+                this._backgroundPreloadIdleHandle = window.requestIdleCallback(run, {
+                    timeout: this.config.backgroundPreloadIdleTimeoutMs,
+                });
+            } else {
+                this._backgroundPreloadIdleHandle = setTimeout(() => {
+                    run({ didTimeout: true, timeRemaining: () => 16 });
+                }, 120);
+            }
+        };
+        this._backgroundPreloadTimer = setTimeout(() => {
+            this._backgroundPreloadTimer = null;
+            requestIdle();
+        }, Math.max(0, delayMs));
+    }
+
+    _runBackgroundPreloadStep(deadline) {
+        if (!this._backgroundPreloadQueue.length || !this.modeI) return;
+
+        const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        const quietFor = now - this._lastUserActivityMs;
+        const quietWindow = this.config.backgroundPreloadQuietWindowMs;
+        if (quietFor < quietWindow) {
+            this._scheduleBackgroundPreloadStep(quietWindow - quietFor);
+            return;
+        }
+
+        if (deadline && !deadline.didTimeout && deadline.timeRemaining
+            && deadline.timeRemaining() < 8) {
+            this._scheduleBackgroundPreloadStep(120);
+            return;
+        }
+
+        const item = this._backgroundPreloadQueue[0];
+        const poly = this._getPolyhedron(item.type);
+        const done = this.modeI.warmEarthCanvasCacheFor(
+            poly,
+            this.config.backgroundPreloadFacesPerIdle,
+        );
+        if (done) this._backgroundPreloadQueue.shift();
+        if (this._backgroundPreloadQueue.length) {
+            this._scheduleBackgroundPreloadStep(80);
+        }
     }
 
     async _loadEarthPaths() {
@@ -1424,6 +1538,7 @@ class PresentationApp {
             this._earthStyle = PRESET_PATH_STYLES[this.config.earthPreset]
                             || PRESET_PATH_STYLES.outlines;
             this._pushEarthPaths();
+            this._tryStartBackgroundPreloads();
         } catch (e) {
             console.warn('Earth path load failed:', e);
         }
