@@ -103,9 +103,9 @@ const CONFIG = {
     unfoldedZoom: 1.0,
     unfoldedZoomByType: {
         dymaxionIcosa:       1.0,
-        cube:                0.819,
-        waterman5:           0.549,
-        pentagonalBipyramid: 0.607,
+        cube:                0.86,
+        waterman5:           0.58,
+        pentagonalBipyramid: 0.64,
     },
     // Compute the unfolded net's in-plane rotation from the final hinge
     // geometry so geographic south->north points vertically upward on screen.
