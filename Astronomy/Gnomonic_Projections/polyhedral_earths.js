@@ -26,8 +26,6 @@ import { buildPolyhedron, polyhedronName } from './polyhedra.js';
 import { loadEarthSvgPaths, PRESET_PATH_STYLES } from './earth.js';
 import {
     bakeAzureParallaxLayers,
-    bakeParchmentCloudSphereLight,
-    makeGrainCanvas,
     PAL_DEFAULT as AZURE_PAL_DEFAULT,
     P_DEFAULT as AZURE_P_DEFAULT,
 } from './azureParallaxBaker.js';
@@ -1549,51 +1547,6 @@ const picker = new ShapePicker(
     (type) => app.selectPolyhedron(type),
 );
 picker.setSelected(app.getPolyhedronType());
-
-// Bake the parchment-clouds (light) palette and use it as the picker
-// frame's background instead of the flat #f5e7c1 fill. Run after the
-// first paint so the synchronous watercolor bake doesn't stall the
-// initial render; smaller-than-default tile + fewer passes so it
-// finishes in well under a second.
-(async () => {
-    await new Promise((r) => requestAnimationFrame(r));
-    const pickerEl = document.getElementById('shape-picker');
-    if (!pickerEl) return;
-    try {
-        const t0 = performance.now();
-        // Picker parchment-clouds params tuned in picker-experiment.html.
-        const canvas = bakeParchmentCloudSphereLight({
-            P: { tileSize: 1408, parallaxLayers: 2, cloudsPerLayer: 4, watercolorPasses: 18, opacity: 0.32 },
-            outputW: 1024,
-            outputH: 256,
-        });
-        // Overlay-grain pass: tile the 256x256 makeGrainCanvas across the
-        // canvas at 6% (overlay blend) so the picker bg's noise signature
-        // matches the polyhedron face tiles — same pass as picker-experiment.
-        const grain = makeGrainCanvas(7602);
-        const ctx = canvas.getContext('2d');
-        const G = grain.width;
-        ctx.save();
-        ctx.globalAlpha = 0.06;
-        ctx.globalCompositeOperation = 'overlay';
-        for (let y = 0; y < canvas.height; y += G) {
-            for (let x = 0; x < canvas.width; x += G) {
-                ctx.drawImage(grain, x, y);
-            }
-        }
-        ctx.restore();
-        const url = canvas.toDataURL('image/png');
-        pickerEl.style.backgroundImage = `url(${url})`;
-        pickerEl.style.backgroundSize = 'cover';
-        pickerEl.style.backgroundPosition = 'center';
-        // Keep the flat parchment fill as a fallback so the frame still
-        // reads if the data URL ever fails to render.
-        const dt = Math.round(performance.now() - t0);
-        console.log(`[presentation] picker parchment-clouds bg baked in ${dt} ms`);
-    } catch (e) {
-        console.warn('[presentation] picker parchment-clouds bake failed', e);
-    }
-})();
 
 // Single RAF loop driving both the main app and the picker. Sharing a
 // frame's dt keeps everything in lockstep and avoids the cost of two
