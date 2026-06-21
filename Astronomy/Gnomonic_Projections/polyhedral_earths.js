@@ -1054,10 +1054,22 @@ class PresentationApp {
         const canvas = this.renderer.domElement;
         canvas.style.touchAction = 'none';
         const TAP_SLOP = 6;            // px of travel under which it counts as a tap
+        const PINCH_SETTLE_MS = 90;    // ignore unstable first pinch samples
+        const POST_TAP_ZOOM_LOCK_MS = 180;
+        const PINCH_ZOOM_MAX_LOG_STEP = 0.035;
+        const PINCH_ZOOM_RESPONSE = 0.55;
+        const PINCH_ZOOM_DEADBAND_LOG = 0.0035;
         const activeTouches = new Map();
         let dragging = false, activePointerId = null;
         let lastX = 0, lastY = 0, downX = 0, downY = 0;
         let suppressTap = false;
+        let pinchStartMs = 0;
+        let pinchZoomSamples = 0;
+        let lastTapMs = -Infinity;
+
+        const nowMs = () => (typeof performance !== 'undefined')
+            ? performance.now()
+            : Date.now();
 
         const capturePointer = (id) => {
             if (id == null) return;
@@ -1093,10 +1105,23 @@ class PresentationApp {
             activePointerId = null;
             captureActiveTouches();
             lastTouchPair = touchPair();
+            pinchStartMs = nowMs();
+            pinchZoomSamples = 0;
         };
 
         const applyPinchZoom = (ratio) => {
             if (!Number.isFinite(ratio) || ratio <= 0 || !this.camera) return;
+            const elapsed = nowMs() - pinchStartMs;
+            pinchZoomSamples += 1;
+            if (pinchZoomSamples <= 1 || elapsed < PINCH_SETTLE_MS
+                || nowMs() - lastTapMs < POST_TAP_ZOOM_LOCK_MS) return;
+            const logRatio = Math.log(ratio);
+            if (Math.abs(logRatio) < PINCH_ZOOM_DEADBAND_LOG) return;
+            const clampedLog = Math.max(
+                -PINCH_ZOOM_MAX_LOG_STEP,
+                Math.min(PINCH_ZOOM_MAX_LOG_STEP, logRatio),
+            );
+            const easedRatio = Math.exp(clampedLog * PINCH_ZOOM_RESPONSE);
             const target = (this.controls && this.controls.target)
                 ? this.controls.target
                 : new THREE.Vector3();
@@ -1109,7 +1134,7 @@ class PresentationApp {
             const maxD = this.controls && Number.isFinite(this.controls.maxDistance)
                 ? this.controls.maxDistance
                 : Infinity;
-            const nextDist = Math.max(minD, Math.min(maxD, dist / ratio));
+            const nextDist = Math.max(minD, Math.min(maxD, dist / easedRatio));
             offset.setLength(nextDist);
             this.camera.position.copy(target).add(offset);
             this.camera.updateMatrixWorld();
@@ -1205,6 +1230,7 @@ class PresentationApp {
             releasePointer(e.pointerId);
             // Negligible travel since pointerdown → it's a tap: toggle the fold.
             if (!suppressTap && Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) {
+                lastTapMs = nowMs();
                 this.toggleFold();
             }
             if (activeTouches.size === 0) suppressTap = false;
