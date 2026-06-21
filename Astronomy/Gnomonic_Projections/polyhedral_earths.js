@@ -1048,16 +1048,43 @@ class PresentationApp {
         if (this.controls) this.controls.enableRotate = false;
         const canvas = this.renderer.domElement;
         const TAP_SLOP = 6;            // px of travel under which it counts as a tap
-        let dragging = false, lastX = 0, lastY = 0, downX = 0, downY = 0;
+        const activeTouches = new Map();
+        let dragging = false, activePointerId = null;
+        let lastX = 0, lastY = 0, downX = 0, downY = 0;
+        let suppressTap = false;
+
+        const releasePointer = (id) => {
+            if (id == null) return;
+            try { canvas.releasePointerCapture(id); } catch (err) {}
+        };
+
         canvas.addEventListener('pointerdown', (e) => {
             if (e.button !== 0) return;
+            if (e.pointerType === 'touch') {
+                activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                if (activeTouches.size > 1) {
+                    suppressTap = true;
+                    dragging = false;
+                    releasePointer(activePointerId);
+                    activePointerId = null;
+                    return;
+                }
+            }
             dragging = true;
+            activePointerId = e.pointerId;
+            suppressTap = false;
             lastX = downX = e.clientX;
             lastY = downY = e.clientY;
             canvas.setPointerCapture(e.pointerId);
         });
         canvas.addEventListener('pointermove', (e) => {
-            if (!dragging || !this.modeI || !this.modeI.applyUserRotation) return;
+            if (e.pointerType === 'touch') {
+                if (!activeTouches.has(e.pointerId)) return;
+                activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                if (activeTouches.size > 1) return;
+            }
+            if (!dragging || e.pointerId !== activePointerId
+                || !this.modeI || !this.modeI.applyUserRotation) return;
             const dx = e.clientX - lastX;
             const dy = e.clientY - lastY;
             lastX = e.clientX;
@@ -1065,17 +1092,28 @@ class PresentationApp {
             this.modeI.applyUserRotation(dx, dy);
         });
         canvas.addEventListener('pointerup', (e) => {
-            if (!dragging) return;
+            if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
+            if (!dragging || e.pointerId !== activePointerId) {
+                if (activeTouches.size === 0) suppressTap = false;
+                return;
+            }
             dragging = false;
-            try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+            activePointerId = null;
+            releasePointer(e.pointerId);
             // Negligible travel since pointerdown → it's a tap: toggle the fold.
-            if (Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) {
+            if (!suppressTap && Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) {
                 this.toggleFold();
             }
+            if (activeTouches.size === 0) suppressTap = false;
         });
         canvas.addEventListener('pointercancel', (e) => {
-            dragging = false;
-            try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+            if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
+            if (e.pointerId === activePointerId || activeTouches.size === 0) {
+                dragging = false;
+                activePointerId = null;
+            }
+            if (activeTouches.size === 0) suppressTap = false;
+            releasePointer(e.pointerId);
         });
     }
 
