@@ -8830,11 +8830,121 @@ export class ModeI {
         this._applyFit();
     }
 
+    computeFinalPoleAxisTwistRad() {
+        const finalMats = this._computeFinalFaceMatrices();
+        if (!finalMats) return null;
+
+        const south = this._projectDirectionToFinalNetPoint(
+            new THREE.Vector3(0, -1, 0),
+            finalMats,
+        );
+        const north = this._projectDirectionToFinalNetPoint(
+            new THREE.Vector3(0, 1, 0),
+            finalMats,
+        );
+        if (!south || !north) return null;
+
+        const axisLocal = new THREE.Vector3().subVectors(north, south);
+        if (axisLocal.lengthSq() < 1e-10) return null;
+
+        const qNoTwist = this._computeWorldTargetForTwist(0);
+        if (!qNoTwist) return null;
+
+        const worldForward = this._cameraDir.clone().normalize();
+        let worldUpHint = new THREE.Vector3(0, 1, 0);
+        if (Math.abs(worldForward.dot(worldUpHint)) > 0.95) worldUpHint.set(0, 0, 1);
+        const worldRight = new THREE.Vector3().crossVectors(worldUpHint, worldForward).normalize();
+        const worldUp = new THREE.Vector3().crossVectors(worldForward, worldRight).normalize();
+
+        const axisWorld = axisLocal.applyQuaternion(qNoTwist);
+        axisWorld.addScaledVector(worldForward, -axisWorld.dot(worldForward));
+        if (axisWorld.lengthSq() < 1e-10) return null;
+        axisWorld.normalize();
+
+        const theta = Math.atan2(axisWorld.dot(worldUp), axisWorld.dot(worldRight));
+        const twist = Math.PI / 2 - theta;
+        return Math.atan2(Math.sin(twist), Math.cos(twist));
+    }
+
+    setFinalPoleAxisVertical() {
+        const twist = this.computeFinalPoleAxisTwistRad();
+        if (Number.isFinite(twist)) {
+            this.setFinalTwistRad(twist);
+            return twist;
+        }
+        this.captureFaceParentTarget();
+        return null;
+    }
+
+    captureFaceParentTarget() {
+        this._captureFaceParentTarget();
+        this._applyFit();
+    }
+
+    _computeFinalFaceMatrices() {
+        if (!this._spanningTree || !this._hingePivot || !this._hingeAxis || !this._foldAngle) {
+            return null;
+        }
+        const n = this.faces.length;
+        const { root, parent, order } = this._spanningTree;
+        const worldMats = new Array(n);
+        worldMats[root] = new THREE.Matrix4().identity();
+
+        const pivotWorld = new THREE.Vector3();
+        const axisWorld = new THREE.Vector3();
+        const tmpQuat = new THREE.Quaternion();
+        const T1 = new THREE.Matrix4();
+        const T2 = new THREE.Matrix4();
+        const R = new THREE.Matrix4();
+        const localR = new THREE.Matrix4();
+
+        for (let k = 0; k < order.length; k++) {
+            const f = order[k];
+            if (f === root) continue;
+            const pW = worldMats[parent[f]];
+            if (!pW) continue;
+
+            pivotWorld.copy(this._hingePivot[f]).applyMatrix4(pW);
+            axisWorld.copy(this._hingeAxis[f]).transformDirection(pW);
+
+            T1.makeTranslation(pivotWorld.x, pivotWorld.y, pivotWorld.z);
+            T2.makeTranslation(-pivotWorld.x, -pivotWorld.y, -pivotWorld.z);
+            tmpQuat.setFromAxisAngle(axisWorld, this._foldAngle[f] || 0);
+            R.makeRotationFromQuaternion(tmpQuat);
+            localR.multiplyMatrices(T1, R).multiply(T2);
+
+            worldMats[f] = new THREE.Matrix4().multiplyMatrices(localR, pW);
+        }
+
+        return worldMats;
+    }
+
+    _projectDirectionToFinalNetPoint(unitDir, finalMats) {
+        if (!unitDir || !finalMats) return null;
+        const dir = unitDir.clone().normalize();
+        const hit = projectDirToFace(dir, this.faces, this.polyhedron && this.polyhedron.inradius);
+        if (!hit || !hit.face || !hit.point3D) return null;
+
+        let faceIdx = hit.face.idx;
+        if (typeof faceIdx !== 'number' || !finalMats[faceIdx]) {
+            faceIdx = this.faces.indexOf(hit.face);
+        }
+        const mat = finalMats[faceIdx];
+        if (!mat) return null;
+
+        return hit.point3D.clone().applyMatrix4(mat);
+    }
+
     // Compute the world-frame target orientation at t=1: rootNormal lines up
     // with the camera direction, the polyhedron's local up projects onto
-    // world-up in the camera-perpendicular plane, and the FINAL_TWIST_PRESETS
-    // twist rotates inside that plane. Independent of this.group.quaternion.
+    // world-up in the camera-perpendicular plane, and the final twist rotates
+    // inside that plane. Independent of this.group.quaternion.
     _computeWorldTarget() {
+        const polyType = this.polyhedron && this.polyhedron.type;
+        return this._computeWorldTargetForTwist(_getFinalTwistRad(polyType, this._strategy));
+    }
+
+    _computeWorldTargetForTwist(twistRad = 0) {
         if (!this.faces || !this.faces.length) return null;
         const rootIdx = this.getRoot();
         const face = this.faces[rootIdx];
@@ -8847,10 +8957,9 @@ export class ModeI {
         let worldRight = new THREE.Vector3().crossVectors(worldUpHint, worldForward).normalize();
         let worldUp = new THREE.Vector3().crossVectors(worldForward, worldRight).normalize();
 
-        const polyType = this.polyhedron && this.polyhedron.type;
-        const twistRad = _getFinalTwistRad(polyType, this._strategy);
-        if (twistRad !== 0) {
-            const c = Math.cos(twistRad), s = Math.sin(twistRad);
+        const twist = Number.isFinite(twistRad) ? twistRad : 0;
+        if (twist !== 0) {
+            const c = Math.cos(twist), s = Math.sin(twist);
             const newR = worldRight.clone().multiplyScalar(c).addScaledVector(worldUp,  s);
             const newU = worldUp.clone()   .multiplyScalar(c).addScaledVector(worldRight, -s);
             worldRight = newR;

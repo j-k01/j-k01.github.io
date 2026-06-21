@@ -103,17 +103,9 @@ const CONFIG = {
         waterman5:           0.549,
         pentagonalBipyramid: 0.607,
     },
-    // In-plane "twist" (radians) per shape for the unfolded net's orientation.
-    // At t=1 the group/drag rotation cancels out (ModeI _computeWorldTarget
-    // makes world == qWorldTarget regardless of group), so the resting net
-    // orientation is governed by this final-twist angle.
-    unfoldTwistByType: {
-        dymaxionIcosa:       141.7 * Math.PI / 180,   // N–S pole axis vertical
-        cube:                0,   // untuned
-        waterman5:           0,   // untuned
-        pentagonalBipyramid: 0,
-    },
-
+    // Compute the unfolded net's in-plane rotation from the final hinge
+    // geometry so geographic south->north points vertically upward on screen.
+    orientUnfoldedPoleAxisVertical: true,
     initialPolyhedron: 'dymaxionIcosa',
     backgroundColor: 0x2563c8,          // scratchpad azure
     // Picker shapes in display order — the four the presentation supports.
@@ -399,6 +391,7 @@ const PICKER_BOUNCE_DECAY    = 4.0;   // exponential decay rate (1/sec)
 const PICKER_BOUNCE_DURATION = 1.0;   // sec — gate after which bounce state resets
 const PICKER_MAX_WIDTH = 520;         // expanded strip width cap (css px); cells = width / 4
 const PICKER_COLLAPSED_SCALE = 0.74;  // collapsed square shrinks to this fraction of a cell
+const PICKER_MOBILE_QUERY = '(hover: none) and (pointer: coarse)';
 
 // Thick fat-line (LineSegments2) edges for the picker thumbnails. Straight by
 // default; an optional hand-drawn wobble can be dialled in via the two knobs
@@ -492,7 +485,11 @@ class ShapePicker {
         this._bouncePeak = this._displayH * PICKER_BOUNCE_PEAK_FRAC;
         this._selected = null;
         this._selectedIdx = 0;
-        this._expanded = false;       // collapsed (single square) by default
+        this._mobileQuery = (typeof window !== 'undefined' && window.matchMedia)
+            ? window.matchMedia(PICKER_MOBILE_QUERY)
+            : null;
+        this._mobilePicker = this._isMobilePicker();
+        this._expanded = !this._mobilePicker;
         this._animating = false;
         // Per-shape state. _shapeData[i] holds everything needed to update
         // shape i in update(): the Group, the topology, pre-allocated
@@ -508,13 +505,24 @@ class ShapePicker {
         this._buildShapes();
         this._buildCells();
         this._layout();
-        // Tap the collapsed frame to expand to the full strip.
+        // Tap the collapsed mobile frame to expand to the full strip.
         if (this.frame) {
             this.frame.addEventListener('click', () => {
-                if (!this._expanded && !this._animating) this.expand();
+                if (this._mobilePicker && !this._expanded && !this._animating) this.expand();
             });
         }
-        window.addEventListener('resize', () => this._layout());
+        const syncPickerMode = () => {
+            this._syncResponsiveMode();
+            this._layout();
+        };
+        window.addEventListener('resize', syncPickerMode);
+        if (this._mobileQuery) {
+            if (this._mobileQuery.addEventListener) {
+                this._mobileQuery.addEventListener('change', syncPickerMode);
+            } else if (this._mobileQuery.addListener) {
+                this._mobileQuery.addListener(syncPickerMode);
+            }
+        }
         // Enable the size/pan transitions only after the first layout has
         // painted, so the initial collapsed state doesn't animate in.
         requestAnimationFrame(() => { if (this.frame) this.frame.classList.add('animated'); });
@@ -534,10 +542,29 @@ class ShapePicker {
         this._applyExpandState();
     }
 
+    _isMobilePicker() {
+        return !!(this._mobileQuery && this._mobileQuery.matches);
+    }
+
+    _syncResponsiveMode() {
+        const mobile = this._isMobilePicker();
+        if (mobile === this._mobilePicker) return;
+        this._mobilePicker = mobile;
+        this._expanded = !mobile;
+        this._animating = false;
+    }
+
+    _syncFrameClasses() {
+        if (!this.frame) return;
+        this.frame.classList.toggle('expanded', this._expanded);
+        this.frame.classList.toggle('collapsed', !this._expanded);
+    }
+
     // Frame width = one cell (collapsed) or the full strip (expanded); the inner
     // strip pans so the selected cell is the one shown when collapsed.
     _applyExpandState() {
         if (!this.frame || !this.inner) return;
+        this._syncFrameClasses();
         if (this._expanded) {
             this.frame.style.width = this._stripW.toFixed(1) + 'px';
             this.frame.style.transform = 'scale(1)';
@@ -555,17 +582,15 @@ class ShapePicker {
     expand() {
         if (this._expanded) return;
         this._expanded = true;
-        this.frame.classList.add('expanded');
-        this.frame.classList.remove('collapsed');
+        this._syncFrameClasses();
         this._beginAnim();
         this._applyExpandState();
     }
 
     collapse() {
-        if (!this._expanded) return;
+        if (!this._mobilePicker || !this._expanded) return;
         this._expanded = false;
-        this.frame.classList.add('collapsed');
-        this.frame.classList.remove('expanded');
+        this._syncFrameClasses();
         this._beginAnim();
         this._applyExpandState();
     }
@@ -790,10 +815,10 @@ class ShapePicker {
         this._bounceStartMs[i] = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     }
 
-    // Per-frame integration: advance the shared spin angle, apply spin +
-    // bounce to each shape, recompute hidden-line dashing, render.
+    // Per-frame integration: advance the shared spin angle while expanded,
+    // apply spin + bounce to each shape, recompute hidden-line dashing, render.
     update(dt) {
-        this._spinAngle += PICKER_SPIN_SPEED * dt;
+        if (this._expanded) this._spinAngle += PICKER_SPIN_SPEED * dt;
         const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
         for (let i = 0; i < this._shapeData.length; i++) {
             const data = this._shapeData[i];
@@ -876,14 +901,14 @@ class ShapePicker {
             cell.dataset.shape = type;
             cell.title = polyhedronName(type);
             cell.addEventListener('click', (e) => {
-                if (!this._expanded || this._animating) return;
+                if (this._animating || (this._mobilePicker && !this._expanded)) return;
                 e.stopPropagation();   // don't let the frame's click re-expand
                 if (type !== this._selected) {
                     this.setSelected(type);
                     this.onSelect(type);
                 }
                 this._triggerBounce(i);
-                this.collapse();       // shrink back, panned to the new shape
+                if (this._mobilePicker) this.collapse();
             });
             this.cellContainer.appendChild(cell);
         }
@@ -1163,12 +1188,10 @@ class PresentationApp {
         const strategy = (c.unfoldStrategyByType && c.unfoldStrategyByType[this._polyhedronType])
             || 'steepest';
         m.setStrategy(strategy);
-        // In-plane twist for the unfolded net, per shape (overrides the preset;
-        // 0 if unlisted). This is the control for the resting net orientation
-        // (pole-axis vertical) — see CONFIG.unfoldTwistByType.
-        if (m.setFinalTwistRad) {
-            const tw = (c.unfoldTwistByType && c.unfoldTwistByType[this._polyhedronType]) || 0;
-            m.setFinalTwistRad(tw);
+        // Align the final net from its actual unfolded geometry rather than a
+        // hand-tuned twist table.
+        if (c.orientUnfoldedPoleAxisVertical && m.setFinalPoleAxisVertical) {
+            m.setFinalPoleAxisVertical();
         }
         // Backing tile (parchment-clouds-light slab under the unfolded net)
         // is explicitly off in the presentation — gate the auto-show with
@@ -1256,6 +1279,7 @@ class PresentationApp {
         if (this.modeI.t === this.modeI.targetT) {
             this.modeI.setFoldMode(this.config.unfoldFoldMode);
             this.modeI.setEasing(this.config.unfoldEasing);
+            this._prepareUnfoldTarget();
         }
         this.modeI.targetT = 1;
     }
@@ -1282,6 +1306,15 @@ class PresentationApp {
 
     // "Unfolded" = currently at or animating toward the flat net.
     isUnfolded() { return this.modeI.targetT > 0.5; }
+
+    _prepareUnfoldTarget() {
+        this.modeI.setCameraPos(this.camera.position, this.camera);
+        if (this.config.orientUnfoldedPoleAxisVertical && this.modeI.setFinalPoleAxisVertical) {
+            this.modeI.setFinalPoleAxisVertical();
+        } else if (this.modeI.captureFaceParentTarget) {
+            this.modeI.captureFaceParentTarget();
+        }
+    }
 
     selectPolyhedron(type) {
         if (type === this._polyhedronType) return;
