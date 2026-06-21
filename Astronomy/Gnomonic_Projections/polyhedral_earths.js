@@ -45,7 +45,7 @@ const CONFIG = {
         color: 0xc9a032, specular: 0xe6c878, shininess: 40,
         emissive: 0x2a1c00, emissiveIntensity: 0.40,
     },
-    tileTintHex: 0xdce6fa,              // slider min = #DCE6FA (cool blue-white)
+    tileTintHex: 0xd8e4ff,              // slightly beyond #DCE6FA toward blue-white
     facesOpaque: false,                 // translucent tiles
     blendMode: 'multiply',              // commutative blend (order-independent)
     elevationVisible: true,
