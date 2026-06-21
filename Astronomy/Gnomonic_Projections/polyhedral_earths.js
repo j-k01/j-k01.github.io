@@ -93,7 +93,10 @@ const CONFIG = {
     globeSpinSpeed: (2 * Math.PI) / 52,
     // Map scale by fold state, applied to the map faces only (ModeI's
     // presentation scale — NOT the camera, so the stars/backdrop stay fixed).
-    foldedZoom: 0.577,            // folded globe (all shapes share circumradius)
+    foldedZoom: 0.577,            // folded globe default
+    foldedZoomByType: {
+        pentagonalBipyramid: 0.72,
+    },
     // Per-shape unfolded-net scale — the nets differ a lot in size. Falls back
     // to unfoldedZoom for any shape not listed.
     unfoldedZoom: 1.0,
@@ -1428,10 +1431,13 @@ class PresentationApp {
         // Map-ONLY sizing: scale the polyhedron faces (faceParent), never the
         // camera — so the star sphere + backdrop stay fixed. Eases between the
         // folded scale and the per-shape unfolded scale.
-        const byType = this.config.unfoldedZoomByType;
-        const uz = (byType && byType[this._polyhedronType] != null)
-            ? byType[this._polyhedronType] : this.config.unfoldedZoom;
-        const sizeFactor = this.config.foldedZoom + (uz - this.config.foldedZoom) * m.t;
+        const foldedByType = this.config.foldedZoomByType;
+        const fz = (foldedByType && foldedByType[this._polyhedronType] != null)
+            ? foldedByType[this._polyhedronType] : this.config.foldedZoom;
+        const unfoldedByType = this.config.unfoldedZoomByType;
+        const uz = (unfoldedByType && unfoldedByType[this._polyhedronType] != null)
+            ? unfoldedByType[this._polyhedronType] : this.config.unfoldedZoom;
+        const sizeFactor = fz + (uz - fz) * m.t;
         if (this.modeI.setPresentationScale) this.modeI.setPresentationScale(sizeFactor);
 
         // Drive the parallax cloud-lobe drift in the azure backdrop.
