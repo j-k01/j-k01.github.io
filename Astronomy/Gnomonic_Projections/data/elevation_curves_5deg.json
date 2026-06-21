@@ -1,0 +1,32 @@
+{
+  "source_dataset": "ETOPO 2022 Ice Surface, 60 arc-second NetCDF",
+  "source_file": "ETOPO_2022_v1_60s_N90W180_surface.nc",
+  "source_url": "https://www.ngdc.noaa.gov/thredds/fileServer/global/ETOPO2022/60s/60s_surface_elev_netcdf/ETOPO_2022_v1_60s_N90W180_surface.nc",
+  "source_resolution_deg": 0.016666666666666666,
+  "horizontal_datum": "WGS84 (EPSG:4326)",
+  "vertical_datum": "EGM2008 (EPSG:3855)",
+  "units": "meters",
+  "shape": [
+    36,
+    720
+  ],
+  "lat_step_deg": 5.0,
+  "lon_step_deg": 0.5,
+  "max_lat_deg": 87.0,
+  "lat_first_deg": -87.0,
+  "lat_last_deg": 87.0,
+  "lon_first_deg": -179.75,
+  "lon_last_deg": 179.75,
+  "bin_half_lat_deg": 0.25,
+  "bin_half_lon_deg": 0.25,
+  "cells_per_bin": [
+    30,
+    30
+  ],
+  "binning_method": "cos(lat)-weighted mean of source cells within bin",
+  "dtype": "<f4",
+  "elev_min": -8578.4052734375,
+  "elev_max": 5129.6357421875,
+  "elev_mean": -1904.6651611328125,
+  "generated_utc": "2026-05-16T07:43:02Z"
+}
