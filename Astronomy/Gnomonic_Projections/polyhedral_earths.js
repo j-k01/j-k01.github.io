@@ -1059,6 +1059,15 @@ class PresentationApp {
         let lastX = 0, lastY = 0, downX = 0, downY = 0;
         let suppressTap = false;
 
+        const capturePointer = (id) => {
+            if (id == null) return;
+            try { canvas.setPointerCapture(id); } catch (err) {}
+        };
+
+        const captureActiveTouches = () => {
+            for (const id of activeTouches.keys()) capturePointer(id);
+        };
+
         const releasePointer = (id) => {
             if (id == null) return;
             try { canvas.releasePointerCapture(id); } catch (err) {}
@@ -1073,6 +1082,7 @@ class PresentationApp {
                 x: (pts[0].x + pts[1].x) * 0.5,
                 y: (pts[0].y + pts[1].y) * 0.5,
                 dist: Math.hypot(dx, dy),
+                angle: Math.atan2(dy, dx),
             };
         };
 
@@ -1080,8 +1090,8 @@ class PresentationApp {
         const beginTwoFingerGesture = () => {
             suppressTap = true;
             dragging = false;
-            releasePointer(activePointerId);
             activePointerId = null;
+            captureActiveTouches();
             lastTouchPair = touchPair();
         };
 
@@ -1105,6 +1115,34 @@ class PresentationApp {
             this.camera.updateMatrixWorld();
         };
 
+        const applyPinchPan = (dx, dy) => {
+            if (!this.camera || !this.controls || !this.controls.target) return;
+            const h = canvas.clientHeight || window.innerHeight || 1;
+            const target = this.controls.target;
+            const distance = this.camera.position.distanceTo(target);
+            const worldPerPixel = 2 * distance
+                * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) * 0.5) / h;
+            this.camera.updateMatrixWorld();
+            const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+            const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+            const pan = new THREE.Vector3()
+                .addScaledVector(right, -dx * worldPerPixel)
+                .addScaledVector(up, dy * worldPerPixel);
+            this.camera.position.add(pan);
+            target.add(pan);
+            this.camera.updateMatrixWorld();
+        };
+
+        const normalizedAngleDelta = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
+        const applyPinchTwist = (deltaAngle) => {
+            if (!Number.isFinite(deltaAngle) || Math.abs(deltaAngle) < 1e-4
+                || !this.camera || !this.modeI || !this.modeI.applyWorldSpin) return;
+            const axis = new THREE.Vector3();
+            this.camera.getWorldDirection(axis);
+            this.modeI.applyWorldSpin(axis.normalize(), deltaAngle);
+        };
+
         const updateTwoFingerGesture = () => {
             const pair = touchPair();
             if (!pair) {
@@ -1112,10 +1150,11 @@ class PresentationApp {
                 return;
             }
             if (lastTouchPair) {
-                if (this.modeI && this.modeI.applyUserRotation) {
-                    this.modeI.applyUserRotation(pair.x - lastTouchPair.x, pair.y - lastTouchPair.y);
-                }
+                applyPinchPan(pair.x - lastTouchPair.x, pair.y - lastTouchPair.y);
                 if (lastTouchPair.dist > 1e-3) applyPinchZoom(pair.dist / lastTouchPair.dist);
+                if (lastTouchPair.dist > 12 && pair.dist > 12) {
+                    applyPinchTwist(normalizedAngleDelta(pair.angle, lastTouchPair.angle));
+                }
             }
             lastTouchPair = pair;
         };
@@ -1125,7 +1164,6 @@ class PresentationApp {
             if (e.pointerType === 'touch') {
                 activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
                 if (activeTouches.size > 1) {
-                    canvas.setPointerCapture(e.pointerId);
                     beginTwoFingerGesture();
                     return;
                 }
@@ -1135,7 +1173,7 @@ class PresentationApp {
             suppressTap = false;
             lastX = downX = e.clientX;
             lastY = downY = e.clientY;
-            canvas.setPointerCapture(e.pointerId);
+            capturePointer(e.pointerId);
         });
         canvas.addEventListener('pointermove', (e) => {
             if (e.pointerType === 'touch') {
