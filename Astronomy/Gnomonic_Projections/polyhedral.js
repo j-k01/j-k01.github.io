@@ -9774,12 +9774,13 @@ export class ModeI {
             case 'easeInOut': return t < 0.5
                 ? 4 * t * t * t
                 : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            case 'fastSlowFast': return t + 0.14 * Math.sin(2 * Math.PI * t);
             default: return t;
         }
     }
 
     setEasing(name) {
-        const valid = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
+        const valid = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'fastSlowFast'];
         if (!valid.includes(name)) return;
         if (name === this._easing) return;
         this._easing = name;

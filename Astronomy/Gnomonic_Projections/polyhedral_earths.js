@@ -69,7 +69,7 @@ const CONFIG = {
     unfoldFoldMode: 'wave',
     unfoldEasing:   'easeInOut',
     foldFoldMode:   'simultaneous',
-    foldEasing:     'easeIn',           // t runs backward on fold, so this closes start-fast
+    foldEasing:     'fastSlowFast',
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
     // that suits its geometry; falls back to 'steepest' if not listed.
     unfoldStrategyByType: {
