@@ -6747,6 +6747,7 @@ export class ModeI {
         // drags a contour line across the gap to its (now-detached) neighbour.
         this._elevCurves = null;
         this._elevCurvesMeta = null;
+        this._elevLoadSeq = 0;
         this._elevExag = 150;
         this._elevLatStepDeg = 3;
         this._showElev = false;
@@ -6973,6 +6974,19 @@ export class ModeI {
     setUserRotation(quat) {
         this._userRotation.copy(quat);
         this._applyGroupRotation();
+    }
+
+    getUserRotation() {
+        return this._userRotation.clone();
+    }
+
+    getFaceParentTarget() {
+        return this._faceParentTargetAtT1 ? this._faceParentTargetAtT1.clone() : null;
+    }
+
+    setFaceParentTarget(quat) {
+        this._faceParentTargetAtT1 = quat ? quat.clone() : null;
+        this._applyFit();
     }
 
     // Spin the polyhedron about a FIXED world-space axis by angleRad, composing
@@ -8478,8 +8492,12 @@ export class ModeI {
     setElevationLatStepDeg(step) {
         const valid = [0.5, 1, 2, 3, 5];
         if (!valid.includes(step)) return;
-        if (step === this._elevLatStepDeg) return;
+        if (step === this._elevLatStepDeg) {
+            if (this._showElev && !this._elevCurves) this._loadElevationData();
+            return;
+        }
         this._elevLatStepDeg = step;
+        this._elevLoadSeq += 1;
         this._elevCurves = null;
         this._elevCurvesMeta = null;
         this._clearAllFaceContours();
@@ -8488,7 +8506,9 @@ export class ModeI {
 
     async _loadElevationData() {
         if (this._elevCurves) return;
-        const slug = elevationStepSlug(this._elevLatStepDeg);
+        const requestedStep = this._elevLatStepDeg;
+        const seq = ++this._elevLoadSeq;
+        const slug = elevationStepSlug(requestedStep);
         try {
             const [binResp, jsonResp] = await Promise.all([
                 fetch(`./data/elevation_curves_${slug}deg.bin`),
@@ -8497,14 +8517,18 @@ export class ModeI {
             if (!binResp.ok)  throw new Error(`elev bin (${slug}deg): HTTP ${binResp.status}`);
             if (!jsonResp.ok) throw new Error(`elev json (${slug}deg): HTTP ${jsonResp.status}`);
             const buf = await binResp.arrayBuffer();
-            this._elevCurvesMeta = await jsonResp.json();
-            this._elevCurves = new Float32Array(buf);
-            const [nBand, nLon] = this._elevCurvesMeta.shape;
-            if (this._elevCurves.length !== nBand * nLon) {
-                throw new Error(`Mode I elev bin length ${this._elevCurves.length} != ${nBand}*${nLon}`);
+            const meta = await jsonResp.json();
+            const curves = new Float32Array(buf);
+            const [nBand, nLon] = meta.shape;
+            if (curves.length !== nBand * nLon) {
+                throw new Error(`Mode I elev bin length ${curves.length} != ${nBand}*${nLon}`);
             }
+            if (seq !== this._elevLoadSeq || this._elevLatStepDeg !== requestedStep) return;
+            this._elevCurvesMeta = meta;
+            this._elevCurves = curves;
             this._rebuildAllFaceContours();
         } catch (e) {
+            if (seq !== this._elevLoadSeq || this._elevLatStepDeg !== requestedStep) return;
             console.warn('Mode I elevation data load failed:', e);
         }
     }
@@ -9774,7 +9798,7 @@ export class ModeI {
             case 'easeInOut': return t < 0.5
                 ? 4 * t * t * t
                 : 1 - Math.pow(-2 * t + 2, 3) / 2;
-            case 'fastSlowFast': return t + 0.14 * Math.sin(2 * Math.PI * t);
+            case 'fastSlowFast': return t + 0.095 * Math.sin(2 * Math.PI * t);
             default: return t;
         }
     }

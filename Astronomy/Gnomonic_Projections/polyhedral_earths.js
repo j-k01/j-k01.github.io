@@ -1028,6 +1028,8 @@ class PresentationApp {
         this._backgroundPreloadTimer = null;
         this._backgroundPreloadIdleHandle = null;
         this._lastUserActivityMs = 0;
+        this._viewStates = { folded: null, unfolded: null };
+        this._viewTransition = null;
 
         this._setupRenderer();
         this._setupScene();
@@ -1325,6 +1327,115 @@ class PresentationApp {
         this.scene.add(fill);
     }
 
+    _resetShapeViewDefaults() {
+        this._viewStates = { folded: null, unfolded: null };
+        this._viewTransition = null;
+        if (!this.camera) return;
+        const target = (this.controls && this.controls.target)
+            ? this.controls.target
+            : new THREE.Vector3();
+        target.set(0, 0, 0);
+        this.camera.position.set(0, 60, 280);
+        this.camera.lookAt(target);
+        this.camera.updateMatrixWorld();
+        if (this.controls) this.controls.update();
+        if (this.modeI && this.modeI.setCameraPos) {
+            this.modeI.setCameraPos(this.camera.position, this.camera);
+        }
+    }
+
+    _captureViewState() {
+        if (!this.camera || !this.modeI) return null;
+        const target = (this.controls && this.controls.target)
+            ? this.controls.target
+            : new THREE.Vector3();
+        return {
+            cameraPosition: this.camera.position.clone(),
+            controlsTarget: target.clone(),
+            userRotation: this.modeI.getUserRotation
+                ? this.modeI.getUserRotation()
+                : null,
+            faceParentTarget: this.modeI.getFaceParentTarget
+                ? this.modeI.getFaceParentTarget()
+                : null,
+        };
+    }
+
+    _makeDefaultViewState(userRotation = null, faceParentTarget = null) {
+        return {
+            cameraPosition: new THREE.Vector3(0, 60, 280),
+            controlsTarget: new THREE.Vector3(0, 0, 0),
+            userRotation: userRotation ? userRotation.clone() : null,
+            faceParentTarget: faceParentTarget ? faceParentTarget.clone() : null,
+        };
+    }
+
+    _applyViewState(state) {
+        if (!state || !this.camera) return;
+        const target = state.controlsTarget || new THREE.Vector3();
+        this.camera.position.copy(state.cameraPosition);
+        if (this.controls && this.controls.target) this.controls.target.copy(target);
+        this.camera.lookAt(target);
+        this.camera.updateMatrixWorld();
+        if (this.controls) this.controls.update();
+        if (this.modeI && this.modeI.setCameraPos) {
+            this.modeI.setCameraPos(this.camera.position, this.camera);
+        }
+        if (this.modeI && state.userRotation && this.modeI.setUserRotation) {
+            this.modeI.setUserRotation(state.userRotation);
+        }
+        if (this.modeI && state.faceParentTarget && this.modeI.setFaceParentTarget) {
+            this.modeI.setFaceParentTarget(state.faceParentTarget);
+        }
+    }
+
+    _startViewTransition(from, to, targetT) {
+        if (!from || !to || !this.modeI) {
+            this._viewTransition = null;
+            return;
+        }
+        const faceParentTarget = targetT > 0.5
+            ? to.faceParentTarget
+            : from.faceParentTarget;
+        if (faceParentTarget && this.modeI.setFaceParentTarget) {
+            this.modeI.setFaceParentTarget(faceParentTarget);
+        }
+        this._viewTransition = { from, to, targetT };
+    }
+
+    _applyViewTransition() {
+        const tr = this._viewTransition;
+        if (!tr || !this.modeI || !this.camera) return;
+        const raw = tr.targetT > 0.5 ? this.modeI.t : 1 - this.modeI.t;
+        const a = Math.max(0, Math.min(1, raw));
+        const eased = a * a * (3 - 2 * a);
+        const target = new THREE.Vector3().lerpVectors(
+            tr.from.controlsTarget,
+            tr.to.controlsTarget,
+            eased,
+        );
+        this.camera.position.lerpVectors(
+            tr.from.cameraPosition,
+            tr.to.cameraPosition,
+            eased,
+        );
+        if (this.controls && this.controls.target) this.controls.target.copy(target);
+        this.camera.lookAt(target);
+        this.camera.updateMatrixWorld();
+        if (this.modeI.setCameraPos) {
+            this.modeI.setCameraPos(this.camera.position, this.camera);
+        }
+        if (tr.from.userRotation && tr.to.userRotation && this.modeI.setUserRotation) {
+            const q = tr.from.userRotation.clone().slerp(tr.to.userRotation, eased);
+            this.modeI.setUserRotation(q);
+        }
+        if (this.controls) this.controls.update();
+        if (a >= 0.999 || this.modeI.t === this.modeI.targetT) {
+            this._applyViewState(tr.to);
+            this._viewTransition = null;
+        }
+    }
+
     _getPolyhedron(type) {
         let poly = this._polyhedronCache.get(type);
         if (!poly) {
@@ -1427,6 +1538,8 @@ class PresentationApp {
         // selectPolyhedron already jumped directly there — the ladder
         // would just re-flicker through intermediate densities. Bail.
         if (this.modeI.hasContourCacheFor(this._polyhedronType, target)) {
+            this._initialContoursReady = true;
+            this._tryStartBackgroundPreloads();
             return;
         }
         const delays = this.config.progressiveStepDelays;
@@ -1560,16 +1673,41 @@ class PresentationApp {
     // fraction is 0 or 1 respectively, the same under any easing/mode.
     unfold() {
         if (this.modeI.t === this.modeI.targetT) {
+            const fromState = this._captureViewState();
+            this._viewStates.folded = fromState;
             this.modeI.setFoldMode(this.config.unfoldFoldMode);
             this.modeI.setEasing(this.config.unfoldEasing);
-            this._prepareUnfoldTarget();
+            let savedUnfolded = this._viewStates.unfolded;
+            if (savedUnfolded && savedUnfolded.faceParentTarget
+                && this.modeI.setFaceParentTarget) {
+                this.modeI.setFaceParentTarget(savedUnfolded.faceParentTarget);
+            } else {
+                this._prepareDefaultUnfoldTarget();
+                savedUnfolded = this._makeDefaultViewState(
+                    this.modeI.getUserRotation ? this.modeI.getUserRotation() : null,
+                    this.modeI.getFaceParentTarget ? this.modeI.getFaceParentTarget() : null,
+                );
+            }
+            this._startViewTransition(fromState, savedUnfolded, 1);
+        } else {
+            this._viewTransition = null;
         }
         this.modeI.targetT = 1;
     }
     fold() {
         if (this.modeI.t === this.modeI.targetT) {
+            const fromState = this._captureViewState();
+            this._viewStates.unfolded = fromState;
             this.modeI.setFoldMode(this.config.foldFoldMode);
             this.modeI.setEasing(this.config.foldEasing);
+            const savedFolded = this._viewStates.folded
+                || this._makeDefaultViewState(
+                    this.modeI.getUserRotation ? this.modeI.getUserRotation() : null,
+                    null,
+                );
+            this._startViewTransition(fromState, savedFolded, 0);
+        } else {
+            this._viewTransition = null;
         }
         this.modeI.targetT = 0;
     }
@@ -1599,6 +1737,31 @@ class PresentationApp {
         }
     }
 
+    _prepareDefaultUnfoldTarget() {
+        if (!this.camera || !this.modeI) {
+            this._prepareUnfoldTarget();
+            return;
+        }
+        const livePos = this.camera.position.clone();
+        const liveQuat = this.camera.quaternion.clone();
+        const liveTarget = (this.controls && this.controls.target)
+            ? this.controls.target.clone()
+            : new THREE.Vector3();
+
+        this.camera.position.set(0, 60, 280);
+        if (this.controls && this.controls.target) this.controls.target.set(0, 0, 0);
+        this.camera.lookAt(0, 0, 0);
+        this.camera.updateMatrixWorld();
+        this._prepareUnfoldTarget();
+
+        this.camera.position.copy(livePos);
+        this.camera.quaternion.copy(liveQuat);
+        if (this.controls && this.controls.target) this.controls.target.copy(liveTarget);
+        this.camera.updateMatrixWorld();
+        if (this.controls) this.controls.update();
+        this.modeI.setCameraPos(this.camera.position, this.camera);
+    }
+
     _unfoldTwistOffset() {
         const byType = this.config.unfoldTwistOffsetByType;
         return (byType && Number.isFinite(byType[this._polyhedronType]))
@@ -1623,6 +1786,8 @@ class PresentationApp {
             : ladder[0];
         this.modeI.setElevationLatStepDeg(startDensity);
         this._buildPolyhedronAndMode();
+        this._resetShapeViewDefaults();
+        this._initGlobeSpinAxis();
         this._applyAllSettings();
         this._pushEarthPaths();
         this._scheduleProgressiveContours();
@@ -1702,6 +1867,8 @@ class PresentationApp {
         // Drive Mode I's per-frame fold/unfold integration plus the star
         // overlay update (reads star.XYZ from the catalog map below).
         this.modeI.update(this._starMap);
+        this._applyViewTransition();
+        this.modeI.setCameraPos(this.camera.position, this.camera);
 
         this.renderer.render(this.scene, this.camera);
     }
