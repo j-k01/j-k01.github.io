@@ -49,17 +49,12 @@ const _modeIBackingCanvasCache = new Map();
 function _getModeIBackingCanvasBaked(slug) {
     let canvas = _modeIBackingCanvasCache.get(slug);
     if (canvas) return canvas;
-    const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
     if (slug === 'parchmentCloudsLight') {
         canvas = bakeParchmentCloudSphereLight({ outputW: 2048, outputH: 2048 });
     } else if (slug === 'parchmentClouds') {
         canvas = bakeParchmentCloudSphere({ outputW: 2048, outputH: 2048 });
     } else {
         return null;
-    }
-    if (typeof console !== 'undefined') {
-        const dt = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
-        console.log(`[modeI] backing tile '${slug}' baked in ${Math.round(dt)}ms`);
     }
     _modeIBackingCanvasCache.set(slug, canvas);
     return canvas;
@@ -550,8 +545,7 @@ function renderEarthFaceFromSvgPaths(face, faces, pathData, style, size, bgCanva
 }
 
 // Per-face canvas rasterized by gnomonic-sampling an equirectangular raster
-// image. Used by Mode A-2 for raster-source presets (terrain) so all paths
-// take the same per-face-canvas pipeline as SVG paths. Same orientation
+// image. Kept as a fallback for raw raster sources. Same orientation
 // convention (+X = lon 0, -Z = lon +90E) as renderEarthFaceFromSvgPaths.
 function renderEarthFaceFromRaster(face, faces, earthImage, size, bgCanvas) {
     const canvas = document.createElement('canvas');
@@ -1347,7 +1341,7 @@ class ModeA2 {
         //   - SVG-source presets (outlines/bare/solid) -> per-face canvas with
         //     country paths stroked/filled via the gnomonic projection, so the
         //     outlines stay vector-crisp at any face distortion.
-        //   - Raster preset (terrain) -> per-face canvas via gnomonic raster
+        //   - Raster fallback -> per-face canvas via gnomonic raster
         //     sampling at 1024^2 (same algorithm as earth.js renderEarthFace,
         //     just higher resolution per face than the 256 used by Modes B/C/D).
         this._earthImage = null;
@@ -1486,8 +1480,7 @@ class ModeA2 {
         if (this._elevCurves) this._buildElevationCurves();
     }
 
-    // Raster Earth image (used as a fallback when SVG paths aren't supplied,
-    // e.g. the terrain preset). Triggers a per-face canvas rebuild ONLY if
+    // Raster Earth image fallback when SVG paths aren't supplied. Rebuilds only if
     // we'd actually use the raster — when SVG paths are already loaded, the
     // image is just stored as a fallback and no expensive rebuild fires.
     // Even then, we defer rebuilds until A-2 becomes visible so init doesn't
@@ -8361,7 +8354,6 @@ export class ModeI {
         tctx.drawImage(img, 0, 0);
         try {
             this._parchmentImageData.set(slug, tctx.getImageData(0, 0, w, h));
-            console.log(`[parchment] loaded ${slug} (${w}x${h})`);
         } catch (e) {
             console.warn(`[parchment] could not read ${slug} pixels (CORS?):`, e.message);
             return;

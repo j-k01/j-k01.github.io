@@ -1,17 +1,4 @@
-// Procedural azure-parallax baker. Verbatim port of the watercolor cloud
-// generator from D:\Misc\NewLunar\azure-parallax-tuner.html, so the bake
-// output here is the same algorithm that produced the PNGs the HTML
-// `#azure-bg` div samples — just generated live in JS instead of fetched.
-//
-// Usage:
-//   import { bakeAzureParallaxLayers } from './azureParallaxBaker.js';
-//   const { layers, grain } = bakeAzureParallaxLayers();
-//   // layers: HTMLCanvasElement[4] with the cloud-lobe + alpha-mask
-//   // grain:  HTMLCanvasElement (256×256) overlay-grain pattern
-//
-// Each layer canvas tiles seamlessly along both axes (the mask generator
-// uses `wrapBlurCanvas` to pad + blur with a 3×3 tile mirror so the
-// gaussian blur stays continuous at the edges).
+// Procedural azure-parallax baker used when prebaked backdrop PNGs are absent.
 
 export const P_DEFAULT = {
     tileSize: 2048,

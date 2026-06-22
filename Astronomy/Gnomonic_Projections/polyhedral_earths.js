@@ -1,25 +1,4 @@
-// =====================================================================
-// Polyhedral Earth — presentation port.
-//
-// Slim, modular entry point that wraps the scratchpad-developed ModeI in
-// a fixed-camera presentation:
-//   - the polyhedron is tilted at Earth's axial obliquity and rotates
-//     slowly around its (tilted) polar axis,
-//   - tile look + animation behavior are locked to a single design pass
-//     (antique gold edges, translucent multiplicative tiles, max-warm
-//     tile tint, land-only elevation contours at 0.5° density with 100x
-//     vertical exaggeration, continent outlines visible),
-//   - exactly two affordances: Fold/Unfold (pill button) and a parchment-
-//     framed shape picker showing five tilted wireframe thumbnails.
-//
-// Designed for extension:
-//   - CONFIG below holds every tunable parameter in one place,
-//   - PresentationApp.onBeforeUpdate(dt) is a no-op hook future
-//     rule-injection (edge-folding constraints, conditional rotation,
-//     custom transitions, …) can override,
-//   - the underlying ModeI instance is exposed as `app.modeI`, so any
-//     scratchpad-developed setter remains usable from the console.
-// =====================================================================
+// Polyhedral Earths presentation entry point.
 
 import { ModeI } from './polyhedral.js';
 import { buildPolyhedron, polyhedronName } from './polyhedra.js';
@@ -30,11 +9,6 @@ import {
     P_DEFAULT as AZURE_P_DEFAULT,
 } from './azureParallaxBaker.js';
 
-// ---------------------------------------------------------------------
-// Configuration. Single source of truth — every visual / animation
-// decision the scratchpad converged on lives here. Tweak in place to
-// re-tune the presentation without touching wiring code.
-// ---------------------------------------------------------------------
 const CONFIG = {
     // Visual look.
     sphereRadius: 100,                  // polyhedron R
@@ -47,8 +21,8 @@ const CONFIG = {
     facesOpaque: false,                 // translucent tiles
     blendMode: 'multiply',              // commutative blend (order-independent)
     elevationVisible: true,
-    elevationExag: 150,                 // 150x vertical exaggeration
-    elevationLatStepDeg: 0.5,           // 0.5° density (highest)
+    elevationExag: 150,
+    elevationLatStepDeg: 0.5,
     landOnly: true,                     // hide ocean depths
     faceOutlines: true,                 // gold per-face edges visible
     showFaceLabels: false,              // no index numbers in presentation
@@ -59,18 +33,12 @@ const CONFIG = {
     // camera-pinned shader paints them behind the polyhedron tiles.
     starCapacity: 4000,
 
-    // Animation behavior. Direction-dependent fold-mode + easing — the
-    // unfold rolls out as a depth-staggered wave with smooth in-out
-    // pacing, the fold collapses everything at once with a start-fast
-    // close. Setting these on each direction change only
-    // affects the hinge timing; the at-t=1 orientation target is
-    // captured separately so the world rotation does not snap.
-    foldSpeed: 0.35,                    // ~2.9s end-to-end
+    foldSpeed: 0.35,
     unfoldFoldMode: 'wave',
     unfoldEasing:   'easeInOut',
     foldFoldMode:   'simultaneous',
-    foldEasing:     'easeIn',           // original fold easing; t runs backward on fold
-    foldEndSnapStartT: 0.18,            // final closed-state slice gets a stronger speed kick
+    foldEasing:     'easeIn',
+    foldEndSnapStartT: 0.18,
     foldEndSnapSpeedBoost: 0.90,
     foldSpinFullAtT: 0.18,              // globe spin is full-speed before the fold fully lands
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
@@ -82,15 +50,9 @@ const CONFIG = {
         'pentagonalBipyramid': 'equatorial',
         'rhombicDodec':        'fish',
     },
-    // Earth rotation: tilt around X by obliquity, then spin around the
-    // tilted local Y. Three.js Euler order 'XYZ' applies X first, so
-    // rotation.y rotates around the already-tilted polar axis.
-    obliquityRad: 23.4 * Math.PI / 180, // Earth's axial tilt (kept — only the
-                                        // continuous spin is disabled)
-    dailyRotationSpeed: 0,              // main view does not rotate; only the
-                                        // picker thumbnails spin (see ShapePicker)
-    // Closed-globe auto-spin: rad/s about a SCREEN-FIXED axis tilted at the
-    // obliquity from camera-vertical (≈1 revolution / 52s). 0 disables it.
+    obliquityRad: 23.4 * Math.PI / 180,
+    dailyRotationSpeed: 0,
+    // Closed-globe auto-spin: rad/s about a screen-fixed tilted axis.
     globeSpinSpeed: (2 * Math.PI) / 52,
     // Map scale by fold state, applied to the map faces only (ModeI's
     // presentation scale — NOT the camera, so the stars/backdrop stay fixed).
@@ -115,20 +77,13 @@ const CONFIG = {
         waterman5: -Math.PI / 2,
     },
     initialPolyhedron: 'dymaxionIcosa',
-    backgroundColor: 0x2563c8,          // scratchpad azure
-    // Picker shapes in display order — the four the presentation supports.
+    backgroundColor: 0x2563c8,
+    // Picker shapes in display order.
     pickerShapes: ['dymaxionIcosa', 'cube', 'waterman5', 'pentagonalBipyramid'],
 
-    // Progressive elevation-contour density. Polyhedron swaps used to
-    // stall on the synchronous 0.5°-density contour rebuild (~600 ms);
-    // now we start at coarse 5° (≈30 ms) and ladder up to 0.5° on
-    // staggered timers so the shape appears immediately and the finer
-    // contour lines layer in while the user is already looking at it.
+    // Progressive elevation-contour density.
     progressiveLadder:     [5, 3, 2, 1, 0.5],
-    // Delay BEFORE each ladder step (ms). The first entry is unused
-    // (the 5° step kicks off immediately); subsequent delays scale up
-    // because finer densities take longer to rebuild — give each
-    // refinement room to render before queuing the next.
+    // Delay before each ladder step. The first entry is unused.
     progressiveStepDelays: [0, 200, 300, 500, 700],
     backgroundPreloadEnabled: true,
     backgroundPreloadStartDelayMs: 450,
@@ -138,18 +93,7 @@ const CONFIG = {
     backgroundPreloadContourDelayMs: 140,
 };
 
-// =====================================================================
-// Stars + azure backdrop helpers — kept at module scope so the
-// PresentationApp methods can call them cleanly. Both pieces mirror the
-// behaviour main.js wires for Mode I (camera-pinned star sphere overlay,
-// pre-baked parallax cloud-lobe layers with runtime-bake fallback) but
-// are slimmed down for the presentation: stars use celestial coords
-// directly (no observer-time horizon rotation) since the camera doesn't
-// move, and the backdrop init is local to this file.
-// =====================================================================
-
-// Mirror of main.js's stylized B-V → RGB ramp via colorFromBV without
-// pulling in the whole astronomy / preset machinery.
+// Stars + azure backdrop helpers.
 const SPECTRAL_TABLE = [
     [-0.32, 155, 176, 255], [-0.30, 162, 184, 255], [-0.02, 185, 201, 255],
     [ 0.31, 224, 229, 255], [ 0.50, 246, 243, 255], [ 0.59, 255, 248, 252],
@@ -175,11 +119,6 @@ function _colorFromBV(bv) {
     return 0xffffff;
 }
 
-// Build the star map directly from starcatalogue.json. Each star carries
-// RA/DEC, the magnitude → size mapping, the colour, AND its celestial-
-// frame XYZ (the camera-pinned overlay shader reads star.XYZ on every
-// frame, so set it once here). No constellation / observer / time data —
-// the presentation just shows a static sky behind the polyhedron.
 const MAX_MAGNITUDE = 5.8;
 async function _loadStarMap(sphereRadius) {
     const res = await fetch('./starcatalogue.json');
@@ -211,8 +150,6 @@ async function _loadStarMap(sphereRadius) {
 function _starProps(star) {
     return { visible: true, size: star.size, colorHex: star.colorHex };
 }
-
-// ----- Azure backdrop --------------------------------------------------
 
 function _canvasToTexture(canvas) {
     const tex = new THREE.Texture(canvas);
@@ -381,23 +318,7 @@ function _createAzureBackdrop(scene) {
     return { mesh, material, updateOffsets };
 }
 
-// =====================================================================
-// ShapePicker — parchment-framed strip with five tilted, slowly spinning
-// wireframe polyhedron thumbnails. For each thumbnail:
-//   - tilt X is fixed at 30° (top leans toward viewer),
-//   - rotation Y is updated per frame so the shape spins around its
-//     (tilted) polar axis — gives the 3D-legibility the user asked for,
-//   - thick "fat-line" (LineSegments2) edges: a solid fat-line draws every
-//     edge whose adjacent face is camera-facing in the current pose; a dashed
-//     fat-line draws the fully-occluded edges. Visibility is recomputed every
-//     frame so the solid/dashed split tracks the rotation,
-//   - hatched-ellipse Sprite sits below each as the stylistic shadow,
-//   - clicking a cell triggers a damped vertical bounce in that thumbnail
-//     and fires onSelect(type) for the host app.
-//
-// update(dt) drives spin + bounce + hidden-line recomputation + render in
-// one tick; the bootstrap RAFs both the picker and the main app.
-// =====================================================================
+// ShapePicker renders the selectable wireframe thumbnails.
 const PICKER_SPIN_SPEED      = 0.25;  // rad/sec — shared spin rate (slow & gentle)
 const PICKER_BOUNCE_PEAK_FRAC = 0.08; // bounce peak as a fraction of picker height
 const PICKER_BOUNCE_FREQ_HZ  = 3.0;   // bounces per second
@@ -1039,7 +960,6 @@ class PresentationApp {
         this._setupRenderer();
         this._setupScene();
         this._setupLights();
-        // Azure parallax backdrop — fullscreen-triangle behind all geometry.
         this._backdrop = _createAzureBackdrop(this.scene);
         this._buildPolyhedronAndMode();
         this._initGlobeSpinAxis();
@@ -1047,9 +967,6 @@ class PresentationApp {
         this._loadEarthPaths();
         this._loadStars();
         this._setupDragControls();
-        // Density ladder kicks off the contour pipeline. First step (5°)
-        // fires immediately; the rest are queued on timers so the page
-        // becomes interactive while the high-density binary downloads.
         this._scheduleProgressiveContours();
         this._tryStartBackgroundPreloads();
     }
@@ -1066,11 +983,8 @@ class PresentationApp {
     }
 
     _setupDragControls() {
-        // Mirror main.js's Mode I behaviour: OrbitControls left-drag is off
-        // (camera stays put, which keeps the camera-pinned star sphere
-        // stable), pointer drag instead rotates the polyhedron itself. A press
-        // that does NOT drag (a click/tap) toggles fold/unfold — this replaces
-        // the old Unfold button.
+        // One finger rotates the polyhedron; taps toggle fold state.
+        // Two fingers pan, zoom, twist, and tap-toggle closed-globe auto-spin.
         if (this.controls) this.controls.enableRotate = false;
         const canvas = this.renderer.domElement;
         canvas.style.touchAction = 'none';
@@ -1332,7 +1246,6 @@ class PresentationApp {
             dragging = false;
             activePointerId = null;
             releasePointer(e.pointerId);
-            // Negligible travel since pointerdown → it's a tap: toggle the fold.
             if (!suppressTap && Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) {
                 lastTapMs = nowMs();
                 this.toggleFold();
@@ -1364,11 +1277,6 @@ class PresentationApp {
 
     _setupScene() {
         this.scene = new THREE.Scene();
-        // Mouse-draggable camera. OrbitControls handles left-drag = orbit,
-        // right-drag = pan, wheel = zoom; damping smooths inertia. The
-        // camera-facing rotation in Mode I tracks the live camera position
-        // each frame (setCameraPos), so orbiting the camera while unfolded
-        // keeps the flat net face-on to whichever direction is current.
         this.camera = new THREE.PerspectiveCamera(
             55, window.innerWidth / window.innerHeight, 0.1, 4000,
         );
@@ -1380,10 +1288,7 @@ class PresentationApp {
         this.controls.minDistance = 100;
         this.controls.maxDistance = 800;
         this.controls.enablePan = false;
-        // Auto-spin axis for the closed globe, in CAMERA space: "up" tilted by
-        // the obliquity in the picture plane. Mapped to world in
-        // _initGlobeSpinAxis(); the camera never rotates (zoom only), so the
-        // axis stays fixed on screen no matter how the user spins the globe.
+        // Closed-globe spin axis in camera space.
         const tilt = this.config.obliquityRad;
         this._spinAxisCam = new THREE.Vector3(Math.sin(tilt), Math.cos(tilt), 0);
         this._spinAxisWorld = new THREE.Vector3(0, 1, 0);
@@ -1391,9 +1296,6 @@ class PresentationApp {
         window.addEventListener('resize', () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
             this.camera.updateProjectionMatrix();
-            // Re-sync pixel ratio too: toggling the device toolbar changes
-            // devicePixelRatio, and a stale ratio renders the contour lines at
-            // the wrong resolution (the aliasing artifacts). Capped at 2.
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         });
@@ -1918,11 +1820,6 @@ class PresentationApp {
 
     getPolyhedronType() { return this._polyhedronType; }
 
-    // Override-hook for future rules (edge-folding constraints, conditional
-    // rotation, sequenced reveals, …). Receives the frame's dt in seconds.
-    // Default: no-op.
-    onBeforeUpdate(_dt) { /* hook */ }
-
     // One-time: pin the globe's polar axis onto the screen-fixed tilted spin
     // axis so the default auto-spin reads as a clean Earth rotation (pole ON
     // the axis), and cache that axis in world space for the per-frame spin.
@@ -1943,11 +1840,7 @@ class PresentationApp {
 
     // ----- Main loop ------------------------------------------------------
 
-    // One tick. The bootstrap RAF loop drives this so it can also drive
-    // the shape picker in the same frame (one RAF, two renderers).
     update(dt) {
-        this.onBeforeUpdate(dt);
-
         // OrbitControls damping needs to be advanced each frame even when
         // there's no input — that's what produces the inertia coast.
         if (this.controls) this.controls.update();
@@ -2027,12 +1920,6 @@ class PresentationApp {
 const host = document.getElementById('three-host');
 const app  = new PresentationApp(host);
 
-// Fold/unfold is toggled by tapping/clicking the globe itself — see the tap
-// detection in PresentationApp._setupDragControls (the old button is gone).
-
-// Shape picker bootstrap. The canvas + overlay container live in the HTML;
-// the picker class fills the overlay with one cell per shape and renders
-// the wireframe thumbnails into the canvas.
 const pickerCanvas = document.getElementById('picker-canvas');
 const pickerCells  = document.getElementById('picker-cells');
 const picker = new ShapePicker(
@@ -2041,9 +1928,6 @@ const picker = new ShapePicker(
 );
 picker.setSelected(app.getPolyhedronType());
 
-// Single RAF loop driving both the main app and the picker. Sharing a
-// frame's dt keeps everything in lockstep and avoids the cost of two
-// independent rAF loops.
 let _lastFrameMs = null;
 function loop() {
     const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
@@ -2055,7 +1939,3 @@ function loop() {
     requestAnimationFrame(loop);
 }
 loop();
-
-// Expose for ad-hoc tweaking from devtools.
-window.__app    = app;
-window.__picker = picker;

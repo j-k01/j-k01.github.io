@@ -18,7 +18,6 @@
 
 const PHI = (1 + Math.sqrt(5)) / 2;
 const IP = 1 / PHI;          // 1/phi
-const PHI2 = PHI + 1;        // phi^2
 
 // =============================================================================
 // Spec table.
@@ -145,49 +144,6 @@ const SPECS = {
         vertsPerFace: 4,
     },
 
-    // Rhombic triacontahedron: 30 golden-ratio rhombic faces, 32 vertices
-    // (20 dodec-type + 12 icosa-type). Dual of the icosidodecahedron.
-    //
-    // We use the dodec vertices at canonical magnitudes (sqrt(3)) and the
-    // icosa vertices at full canonical magnitudes (sqrt(2+phi)) too. This
-    // doesn't produce perfectly-planar rhombic faces (a true RT needs the
-    // icosa verts at the dodec's inradius distance), but the face partition
-    // is topologically correct - each face has 4 edge-neighbors - so the
-    // dual / unfold modes work. Rendered faces are very slightly non-planar
-    // and look like nearly-flat rhombi.
-    rhombicTriacontahedron: {
-        name: 'Rhombic Triacontahedron',
-        rawVertices: (() => {
-            const v = [];
-            for (const sx of [+1, -1]) for (const sy of [+1, -1]) for (const sz of [+1, -1]) {
-                v.push([sx, sy, sz]);
-            }
-            for (const s1 of [+1, -1]) for (const s2 of [+1, -1]) v.push([0, s1 * IP, s2 * PHI]);
-            for (const s1 of [+1, -1]) for (const s2 of [+1, -1]) v.push([s1 * IP, s2 * PHI, 0]);
-            for (const s1 of [+1, -1]) for (const s2 of [+1, -1]) v.push([s1 * PHI, 0, s2 * IP]);
-            for (const s1 of [+1, -1]) for (const s2 of [+1, -1]) v.push([0, s1, s2 * PHI]);
-            for (const s1 of [+1, -1]) for (const s2 of [+1, -1]) v.push([s1, s2 * PHI, 0]);
-            for (const s1 of [+1, -1]) for (const s2 of [+1, -1]) v.push([s1 * PHI, 0, s2]);
-            return v;
-        })(),
-        // 30 face center directions = icosidodecahedron vertex directions.
-        // 6 axial + 24 mixed (even cyclic permutations of (1, PHI, PHI^2)).
-        rawNormals: (() => {
-            const n = [
-                [1, 0, 0], [-1, 0, 0],
-                [0, 1, 0], [0, -1, 0],
-                [0, 0, 1], [0, 0, -1],
-            ];
-            for (const sx of [+1, -1]) for (const sy of [+1, -1]) for (const sz of [+1, -1]) {
-                n.push([sx, sy * PHI, sz * PHI2]);
-                n.push([sy * PHI, sz * PHI2, sx]);
-                n.push([sz * PHI2, sx, sy * PHI]);
-            }
-            return n;
-        })(),
-        vertsPerFace: 4,
-    },
-
     // Pentagonal bipyramid: two pentagonal pyramids joined base-to-base.
     // 10 isoceles triangle faces, 7 vertices.
     pentagonalBipyramid: {
@@ -247,11 +203,6 @@ const SPECS = {
     },
 };
 
-// Ordered for the UI selector. The rhombic triacontahedron spec is in SPECS
-// for future fixing but currently produces one near-degenerate face (its
-// canonical construction requires icosa-type verts at the dodec inradius,
-// which my top-K face-finding doesn't quite produce), so it's omitted from
-// the UI list to avoid a broken-looking option.
 export const POLYHEDRON_TYPES = [
     'tetra', 'cube', 'octa', 'dodec', 'icosa',
     'rhombicDodec',

@@ -7,9 +7,6 @@
 // The display side (modes B / C / D) maps each offscreen canvas onto the
 // destination polygon with a 2x3 affine via ctx.setTransform.
 
-// Earth representation registry. Each entry is either:
-//   - a styled SVG preset (svgStyle present) that we rewrite on load, or
-//   - a raster URL (svgStyle absent) loaded as-is.
 // The blank-equirectangular SVG (Natural Earth-derived; CC0) has one
 // <path> per country wrapped in <g class="country XXX"> where XXX is the
 // ISO 3166-1 alpha-3 code, so we can target Antarctica/Greenland by class.
@@ -69,14 +66,6 @@ export const EARTH_PRESETS = {
         svgStyle: SOLID_STYLE,
         paintArctic: true,
         arcticAlpha: 0.95,
-    },
-    // NASA Blue Marble equirectangular (Reto Stockli / NASA GSFC). 2048x1024,
-    // CORS-open on upload.wikimedia.org. Realistic biome/terrain coloration
-    // including the polar ice caps, so no Arctic painting needed.
-    terrain: {
-        id: 'terrain',
-        label: 'Terrain',
-        url: 'https://upload.wikimedia.org/wikipedia/commons/c/cd/Land_ocean_ice_2048.jpg',
     },
 };
 
@@ -242,10 +231,7 @@ export const PRESET_PATH_STYLES = {
     },
 };
 
-// Load and parse an SVG-backed Earth preset into a list of country paths in
-// (lat, lon) radians. Returns null for non-SVG presets (e.g. terrain). The
-// returned structure is fed to renderEarthFaceFromSvgPaths (see polyhedral.js)
-// to produce per-face canvases at native vector resolution.
+// Load and parse an SVG-backed Earth preset into country paths in radians.
 //
 // SVG-specific: paths sit inside a <g id="positioner" transform="translate(180,90) scale(1,-1)">,
 // which makes raw path coordinates equal (lon_deg, lat_deg). Each country
@@ -257,7 +243,7 @@ export async function loadEarthSvgPaths(presetIdOrUrl = DEFAULT_EARTH_PRESET) {
     const preset = (typeof presetIdOrUrl === 'string' && EARTH_PRESETS[presetIdOrUrl])
         ? EARTH_PRESETS[presetIdOrUrl]
         : { url: presetIdOrUrl };
-    if (!preset.svgStyle) return null; // raster preset (terrain), no vector data
+    if (!preset.svgStyle) return null;
     const resp = await fetch(preset.url);
     if (!resp.ok) throw new Error(`SVG fetch ${resp.status}: ${preset.url}`);
     const svgText = await resp.text();
