@@ -13,6 +13,10 @@
                          "Palatino", "Georgia", serif;
             overflow: hidden;
         }
+        :root {
+            --poly-edge-gold: #c9a032;
+            --poly-edge-highlight-rgb: 230, 200, 120;
+        }
 
         /* The Three.js canvas takes the full viewport; everything else floats. */
         #three-host { position: absolute; inset: 0; }
@@ -37,7 +41,8 @@
             border-radius: 8px;
             background: #f5e7c1 url("./assets/prebaked.png") center / cover;
             box-shadow:
-                0 0 0 2px #9c7a32,                  /* rustic ring (Mode I profile) */
+                0 0 0 2px var(--poly-edge-gold),     /* matches main polyhedron edges */
+                0 0 0 3px rgba(var(--poly-edge-highlight-rgb), 0.42),
                 0 6px 22px rgba(0, 0, 0, 0.45);
             cursor: pointer;
             z-index: 10;
@@ -76,11 +81,11 @@
         }
         #shape-picker.expanded .picker-cell { pointer-events: auto; }
         .picker-cell:hover {
-            background: rgba(156, 122, 50, 0.12);
+            background: rgba(201, 160, 50, 0.12);
         }
         .picker-cell.active {
-            border-color: rgba(74, 53, 0, 0.8);
-            background: rgba(156, 122, 50, 0.20);
+            border-color: rgba(201, 160, 50, 0.92);
+            background: rgba(201, 160, 50, 0.20);
         }
 
     </style>
