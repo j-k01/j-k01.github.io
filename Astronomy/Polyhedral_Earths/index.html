@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base href="/Astronomy/Gnomonic_Projections/">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Polyhedral Earths</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            /* Scratchpad azure - same shade as the development page. */
+            background: #2563c8; color: #f5e7c1;
+            font-family: "EB Garamond", "Iowan Old Style", "Palatino Linotype",
+                         "Palatino", "Georgia", serif;
+            overflow: hidden;
+        }
+        :root {
+            --poly-edge-gold: #c9a032;
+            --poly-edge-highlight-rgb: 230, 200, 120;
+        }
+
+        /* The Three.js canvas takes the full viewport; everything else floats. */
+        #three-host { position: absolute; inset: 0; }
+        #three-host canvas { display: block; }
+
+        /* Shape-picker frame: parchment interior with the brilliant-gold trim
+           used for the 2D fold modes. Sits at the bottom-center; clicking on
+           any of the five mini polyhedra inside selects that shape. */
+        #shape-picker {
+            position: absolute;
+            /* Bottom-centre, just above the bottom edge. Collapsed by default to
+               a single square thumbnail of the current shape; tap to expand to
+               the full four-shape strip. Width (and the inner pan) are set by JS
+               and animated; overflow:hidden crops the strip to the selected
+               cell. The rustic ring is a box-shadow (not a border) so it never
+               affects the crop geometry. */
+            left: calc(16px + env(safe-area-inset-left, 0px));
+            bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            transform-origin: bottom left;   /* collapsed scale shrinks toward the corner */
+            box-sizing: border-box;
+            overflow: hidden;
+            border-radius: 8px;
+            background: #f5e7c1 url("./assets/prebaked.png") center / cover;
+            box-shadow:
+                0 0 0 2px var(--poly-edge-gold),     /* matches main polyhedron edges */
+                0 0 0 3px rgba(var(--poly-edge-highlight-rgb), 0.42),
+                0 6px 22px rgba(0, 0, 0, 0.45);
+            cursor: pointer;
+            z-index: 10;
+        }
+        /* Transitions are enabled only after the first layout, so the initial
+           collapsed size doesn't animate in from the default. */
+        #shape-picker.animated {
+            transition: width 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+                        transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #shape-picker.animated #picker-inner {
+            transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #picker-inner {
+            position: relative;   /* width (full strip) + translateX set by JS */
+        }
+        #picker-canvas {
+            display: block;
+            width: 100%;
+            height: auto;   /* preserve the 560:140 aspect (four square cells) */
+        }
+        #picker-cells {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            pointer-events: none;
+        }
+        .picker-cell {
+            flex: 1;
+            cursor: pointer;
+            pointer-events: none;   /* selectable only when expanded */
+            border: 2px solid transparent;
+            border-radius: 4px;
+            box-sizing: border-box;
+            transition: background 0.12s ease, border-color 0.12s ease;
+        }
+        #shape-picker.expanded .picker-cell { pointer-events: auto; }
+        .picker-cell:hover {
+            background: rgba(201, 160, 50, 0.12);
+        }
+        .picker-cell.active {
+            border-color: rgba(201, 160, 50, 0.92);
+            background: rgba(201, 160, 50, 0.20);
+        }
+
+    </style>
+</head>
+<body>
+    <div id="three-host"></div>
+
+    <!-- Shape picker: collapsed by default to a single square thumbnail of the
+         current shape; tap to expand to the full four-shape strip, pick one, and
+         it collapses back to that shape. WebGL renders all four in a 4-square
+         strip (560x140); the frame crops + pans to the selected cell via CSS. -->
+    <div id="shape-picker" class="collapsed">
+        <div id="picker-inner">
+            <canvas id="picker-canvas" width="560" height="112"></canvas>
+            <div id="picker-cells"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.121.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- ConvexHull is needed by the Waterman W5 + emerald-cut builders in
+         polyhedra.js (both feed raw vertex sets through it). -->
+    <script src="https://unpkg.com/three@0.121.0/examples/js/math/ConvexHull.js"></script>
+    <!-- Fat lines: thick, pen-like edges for the shape-picker thumbnails.
+         Must load before polyhedral_earths.js; they attach to the global THREE. -->
+    <script src="https://unpkg.com/three@0.121.0/examples/js/lines/LineSegmentsGeometry.js"></script>
+    <script src="https://unpkg.com/three@0.121.0/examples/js/lines/LineMaterial.js"></script>
+    <script src="https://unpkg.com/three@0.121.0/examples/js/lines/LineSegments2.js"></script>
+    <script type="module" src="./polyhedral_earths.js"></script>
+</body>
+</html>
