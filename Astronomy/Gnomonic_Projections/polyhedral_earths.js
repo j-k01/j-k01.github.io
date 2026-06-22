@@ -131,7 +131,7 @@ const CONFIG = {
     // refinement room to render before queuing the next.
     progressiveStepDelays: [0, 200, 300, 500, 700],
     backgroundPreloadEnabled: true,
-    backgroundPreloadStartDelayMs: 900,
+    backgroundPreloadStartDelayMs: 450,
     backgroundPreloadIdleTimeoutMs: 1800,
     backgroundPreloadQuietWindowMs: 650,
     backgroundPreloadFacesPerIdle: 1,
@@ -1051,6 +1051,7 @@ class PresentationApp {
         // fires immediately; the rest are queued on timers so the page
         // becomes interactive while the high-density binary downloads.
         this._scheduleProgressiveContours();
+        this._tryStartBackgroundPreloads();
     }
 
     async _loadStars() {
@@ -1664,8 +1665,7 @@ class PresentationApp {
     _tryStartBackgroundPreloads() {
         const c = this.config;
         if (!c.backgroundPreloadEnabled || this._backgroundPreloadStarted) return;
-        if (!this._initialContoursReady || !this._earthPaths || !this._earthStyle) return;
-        if (!this.modeI || !this.modeI.warmEarthCanvasCacheFor) return;
+        if (!this.modeI || !this.modeI.warmContourCacheFor) return;
 
         this._backgroundPreloadStarted = true;
         this._backgroundPreloadQueue = c.pickerShapes
@@ -1716,21 +1716,27 @@ class PresentationApp {
             return;
         }
 
-        const item = this._backgroundPreloadQueue[0];
-        const poly = this._getPolyhedron(item.type);
-        if (!item.contoursReady && this.modeI.warmContourCacheFor) {
-            if (deadline && deadline.didTimeout) {
-                this._scheduleBackgroundPreloadStep(this.config.backgroundPreloadContourDelayMs);
-                return;
-            }
-            const ladder = this.config.progressiveLadder;
-            const targetDensity = ladder[ladder.length - 1];
-            item.contoursReady = this.modeI.warmContourCacheFor(poly, targetDensity);
-            if (!item.contoursReady) {
-                this._scheduleBackgroundPreloadStep(this.config.backgroundPreloadContourDelayMs);
-                return;
-            }
+        const ladder = this.config.progressiveLadder;
+        const targetDensity = ladder[ladder.length - 1];
+        const contourItem = this._backgroundPreloadQueue.find(entry => !entry.contoursReady);
+        if (contourItem && this.modeI.warmContourCacheFor) {
+            const poly = this._getPolyhedron(contourItem.type);
+            contourItem.contoursReady = this.modeI.warmContourCacheFor(poly, targetDensity);
+            this._scheduleBackgroundPreloadStep(this.config.backgroundPreloadContourDelayMs);
+            return;
         }
+
+        if (!this._earthPaths || !this._earthStyle) {
+            this._scheduleBackgroundPreloadStep(250);
+            return;
+        }
+
+        const item = this._backgroundPreloadQueue.find(entry => !entry.canvasesReady);
+        if (!item) {
+            this._backgroundPreloadQueue = [];
+            return;
+        }
+        const poly = this._getPolyhedron(item.type);
         if (!item.canvasesReady) {
             item.canvasesReady = this.modeI.warmEarthCanvasCacheFor(
                 poly,
@@ -1741,9 +1747,10 @@ class PresentationApp {
                 return;
             }
         }
-        this._backgroundPreloadQueue.shift();
-        if (this._backgroundPreloadQueue.length) {
+        if (this._backgroundPreloadQueue.some(entry => !entry.canvasesReady)) {
             this._scheduleBackgroundPreloadStep(80);
+        } else {
+            this._backgroundPreloadQueue = [];
         }
     }
 
@@ -1884,6 +1891,9 @@ class PresentationApp {
 
     selectPolyhedron(type) {
         if (type === this._polyhedronType) return;
+        this._lastUserActivityMs = (typeof performance !== 'undefined')
+            ? performance.now()
+            : Date.now();
         this._polyhedronType = type;
         // Repeat-visit fast path. If the target density's contour arrays are
         // already cached for THIS polyhedron type, skip the coarse-first

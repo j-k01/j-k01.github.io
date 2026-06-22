@@ -6241,25 +6241,33 @@ function landOnlyElev(elev) {
 // modes share this loader so the same ETOPO 60" binary doesn't get fetched
 // or parsed more than once per density.
 const _elevCurvesCache = new Map();
+const _elevCurvesPending = new Map();
 async function loadElevationCurves(latStepDeg) {
     if (_elevCurvesCache.has(latStepDeg)) return _elevCurvesCache.get(latStepDeg);
+    if (_elevCurvesPending.has(latStepDeg)) return _elevCurvesPending.get(latStepDeg);
     const slug = elevationStepSlug(latStepDeg);
-    const [binResp, jsonResp] = await Promise.all([
-        fetch(`./data/elevation_curves_${slug}deg.bin`),
-        fetch(`./data/elevation_curves_${slug}deg.json`),
-    ]);
-    if (!binResp.ok)  throw new Error(`elev bin  (${slug}deg): HTTP ${binResp.status}`);
-    if (!jsonResp.ok) throw new Error(`elev json (${slug}deg): HTTP ${jsonResp.status}`);
-    const buf = await binResp.arrayBuffer();
-    const meta = await jsonResp.json();
-    const curves = new Float32Array(buf);
-    const [nBand, nLon] = meta.shape;
-    if (curves.length !== nBand * nLon) {
-        throw new Error(`elev bin length ${curves.length} != ${nBand}*${nLon}`);
-    }
-    const result = { curves, meta };
-    _elevCurvesCache.set(latStepDeg, result);
-    return result;
+    const pending = (async () => {
+        const [binResp, jsonResp] = await Promise.all([
+            fetch(`./data/elevation_curves_${slug}deg.bin`),
+            fetch(`./data/elevation_curves_${slug}deg.json`),
+        ]);
+        if (!binResp.ok)  throw new Error(`elev bin  (${slug}deg): HTTP ${binResp.status}`);
+        if (!jsonResp.ok) throw new Error(`elev json (${slug}deg): HTTP ${jsonResp.status}`);
+        const buf = await binResp.arrayBuffer();
+        const meta = await jsonResp.json();
+        const curves = new Float32Array(buf);
+        const [nBand, nLon] = meta.shape;
+        if (curves.length !== nBand * nLon) {
+            throw new Error(`elev bin length ${curves.length} != ${nBand}*${nLon}`);
+        }
+        const result = { curves, meta };
+        _elevCurvesCache.set(latStepDeg, result);
+        return result;
+    })().finally(() => {
+        _elevCurvesPending.delete(latStepDeg);
+    });
+    _elevCurvesPending.set(latStepDeg, pending);
+    return pending;
 }
 
 // Project each elevation-curve vertex through R^T (= sphereOrientation^-1 for
