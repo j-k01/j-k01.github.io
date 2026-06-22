@@ -70,8 +70,9 @@ const CONFIG = {
     unfoldEasing:   'easeInOut',
     foldFoldMode:   'simultaneous',
     foldEasing:     'easeIn',           // original fold easing; t runs backward on fold
-    foldEndSnapStartT: 0.10,            // final closed-state slice gets a small speed kick
-    foldEndSnapSpeedBoost: 0.55,
+    foldEndSnapStartT: 0.18,            // final closed-state slice gets a stronger speed kick
+    foldEndSnapSpeedBoost: 0.90,
+    foldSpinFullAtT: 0.18,              // globe spin is full-speed before the fold fully lands
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
     // that suits its geometry; falls back to 'steepest' if not listed.
     unfoldStrategyByType: {
@@ -1834,11 +1835,12 @@ class PresentationApp {
         const m = this.modeI;
 
         // Auto-spin the closed globe about the screen-fixed tilted axis. The
-        // spin fades IN as the earth folds up (t: 1 net → 0 globe) and runs at
-        // full speed only when closed; it's off the moment an unfold begins
-        // (targetT ≥ 0.5) so the unfold-orientation drive below can take over.
+        // spin fades IN as the earth folds up (t: 1 net → 0 globe) and reaches
+        // full speed before the final snap lands; it's off the moment an unfold
+        // begins (targetT ≥ 0.5) so the unfold-orientation drive below can take over.
         // Premultiplying _userRotation keeps the axis fixed on screen.
-        const foldedFrac = 1 - m.t;            // 0 = net, 1 = closed
+        const spinFullAtT = Math.max(0, Math.min(0.95, this.config.foldSpinFullAtT || 0));
+        const foldedFrac = Math.min(1, (1 - m.t) / Math.max(1e-6, 1 - spinFullAtT));
         if (this._spinSpeed && m.targetT < 0.5 && foldedFrac > 1e-3) {
             const fade = foldedFrac * foldedFrac * (3 - 2 * foldedFrac);  // smoothstep ease
             this.modeI.applyWorldSpin(this._spinAxisWorld, this._spinSpeed * fade * dt);
