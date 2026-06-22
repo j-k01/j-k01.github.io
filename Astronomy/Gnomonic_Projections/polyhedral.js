@@ -6759,6 +6759,7 @@ export class ModeI {
         // returns to a previously-visited (shape, density) pair — e.g.
         // toggling back to W5 + 0.5° after a detour through dodec.
         this._contourCache = new Map();
+        this._contourDataWarmJobs = new Map();
 
         // Per-face gold-edge wireframe params (mirror Mode A-2). The same
         // MeshPhongMaterial is shared across every cylinder/sphere across
@@ -8508,21 +8509,8 @@ export class ModeI {
         if (this._elevCurves) return;
         const requestedStep = this._elevLatStepDeg;
         const seq = ++this._elevLoadSeq;
-        const slug = elevationStepSlug(requestedStep);
         try {
-            const [binResp, jsonResp] = await Promise.all([
-                fetch(`./data/elevation_curves_${slug}deg.bin`),
-                fetch(`./data/elevation_curves_${slug}deg.json`),
-            ]);
-            if (!binResp.ok)  throw new Error(`elev bin (${slug}deg): HTTP ${binResp.status}`);
-            if (!jsonResp.ok) throw new Error(`elev json (${slug}deg): HTTP ${jsonResp.status}`);
-            const buf = await binResp.arrayBuffer();
-            const meta = await jsonResp.json();
-            const curves = new Float32Array(buf);
-            const [nBand, nLon] = meta.shape;
-            if (curves.length !== nBand * nLon) {
-                throw new Error(`Mode I elev bin length ${curves.length} != ${nBand}*${nLon}`);
-            }
+            const { curves, meta } = await loadElevationCurves(requestedStep);
             if (seq !== this._elevLoadSeq || this._elevLatStepDeg !== requestedStep) return;
             this._elevCurvesMeta = meta;
             this._elevCurves = curves;
@@ -8552,15 +8540,82 @@ export class ModeI {
     // stretch across thin air after unfolding).
     _contourCacheKey() {
         const type = this.polyhedron && this.polyhedron.type;
-        return `${type}|${this._elevLatStepDeg}|${this._elevExag}|${this._landOnly ? 1 : 0}`;
+        return this._contourCacheKeyFor(type, this._elevLatStepDeg);
+    }
+
+    _contourCacheKeyFor(polyType, density) {
+        return `${polyType}|${density}|${this._elevExag}|${this._landOnly ? 1 : 0}`;
     }
 
     // Cache probe for an arbitrary (polyType, density) — callers can ask
     // "is the target density already cached for the polyhedron I'm about
     // to switch to?" without first having to set polyhedron + density.
     hasContourCacheFor(polyType, density) {
-        const key = `${polyType}|${density}|${this._elevExag}|${this._landOnly ? 1 : 0}`;
-        return this._contourCache.has(key);
+        return this._contourCache.has(this._contourCacheKeyFor(polyType, density));
+    }
+
+    warmContourCacheFor(polyhedron, density) {
+        const valid = [0.5, 1, 2, 3, 5];
+        if (!polyhedron || !valid.includes(density)) return true;
+        const polyType = polyhedron.type;
+        const key = this._contourCacheKeyFor(polyType, density);
+        if (this._contourCache.has(key)) return true;
+
+        let curves = null;
+        let meta = null;
+        if (this._elevLatStepDeg === density && this._elevCurves && this._elevCurvesMeta) {
+            curves = this._elevCurves;
+            meta = this._elevCurvesMeta;
+        } else if (_elevCurvesCache.has(density)) {
+            const data = _elevCurvesCache.get(density);
+            curves = data.curves;
+            meta = data.meta;
+        }
+
+        if (!curves || !meta) {
+            if (!this._contourDataWarmJobs.has(density)) {
+                const job = loadElevationCurves(density)
+                    .catch(e => {
+                        console.warn('Mode I contour preload failed:', e);
+                    })
+                    .finally(() => {
+                        this._contourDataWarmJobs.delete(density);
+                    });
+                this._contourDataWarmJobs.set(density, job);
+            }
+            return false;
+        }
+
+        const oldPolyhedron = this.polyhedron;
+        const oldFaces = this.faces;
+        const oldWatermanFaces = this._watermanButterflyFaces;
+        const oldCurves = this._elevCurves;
+        const oldMeta = this._elevCurvesMeta;
+        const oldStep = this._elevLatStepDeg;
+        let cached = null;
+        try {
+            this.polyhedron = polyhedron;
+            this.faces = modeIFacesForPolyhedron(polyhedron);
+            this._watermanButterflyFaces = polyType === 'waterman5';
+            this._elevCurves = curves;
+            this._elevCurvesMeta = meta;
+            this._elevLatStepDeg = density;
+            cached = this._computeFaceContourArrays();
+        } catch (e) {
+            console.warn('Mode I contour preload failed:', e);
+        } finally {
+            this.polyhedron = oldPolyhedron;
+            this.faces = oldFaces;
+            this._watermanButterflyFaces = oldWatermanFaces;
+            this._elevCurves = oldCurves;
+            this._elevCurvesMeta = oldMeta;
+            this._elevLatStepDeg = oldStep;
+        }
+        if (cached) {
+            this._contourCache.set(key, cached);
+            return true;
+        }
+        return false;
     }
 
     _rebuildAllFaceContours() {

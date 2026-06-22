@@ -135,6 +135,7 @@ const CONFIG = {
     backgroundPreloadIdleTimeoutMs: 1800,
     backgroundPreloadQuietWindowMs: 650,
     backgroundPreloadFacesPerIdle: 1,
+    backgroundPreloadContourDelayMs: 140,
 };
 
 // =====================================================================
@@ -1669,7 +1670,7 @@ class PresentationApp {
         this._backgroundPreloadStarted = true;
         this._backgroundPreloadQueue = c.pickerShapes
             .filter(type => type !== this._polyhedronType)
-            .map(type => ({ type }));
+            .map(type => ({ type, canvasesReady: false, contoursReady: false }));
         if (this._backgroundPreloadQueue.length) {
             this._scheduleBackgroundPreloadStep(c.backgroundPreloadStartDelayMs);
         }
@@ -1717,11 +1718,30 @@ class PresentationApp {
 
         const item = this._backgroundPreloadQueue[0];
         const poly = this._getPolyhedron(item.type);
-        const done = this.modeI.warmEarthCanvasCacheFor(
-            poly,
-            this.config.backgroundPreloadFacesPerIdle,
-        );
-        if (done) this._backgroundPreloadQueue.shift();
+        if (!item.contoursReady && this.modeI.warmContourCacheFor) {
+            if (deadline && deadline.didTimeout) {
+                this._scheduleBackgroundPreloadStep(this.config.backgroundPreloadContourDelayMs);
+                return;
+            }
+            const ladder = this.config.progressiveLadder;
+            const targetDensity = ladder[ladder.length - 1];
+            item.contoursReady = this.modeI.warmContourCacheFor(poly, targetDensity);
+            if (!item.contoursReady) {
+                this._scheduleBackgroundPreloadStep(this.config.backgroundPreloadContourDelayMs);
+                return;
+            }
+        }
+        if (!item.canvasesReady) {
+            item.canvasesReady = this.modeI.warmEarthCanvasCacheFor(
+                poly,
+                this.config.backgroundPreloadFacesPerIdle,
+            );
+            if (!item.canvasesReady) {
+                this._scheduleBackgroundPreloadStep(80);
+                return;
+            }
+        }
+        this._backgroundPreloadQueue.shift();
         if (this._backgroundPreloadQueue.length) {
             this._scheduleBackgroundPreloadStep(80);
         }
