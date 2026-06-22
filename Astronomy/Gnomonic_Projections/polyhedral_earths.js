@@ -72,7 +72,6 @@ const CONFIG = {
     foldEasing:     'easeIn',           // original fold easing; t runs backward on fold
     foldEndSnapStartT: 0.10,            // final closed-state slice gets a small speed kick
     foldEndSnapSpeedBoost: 0.55,
-    foldScaleSettleT: 0.14,             // reach final folded scale before the last hinge snap
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
     // that suits its geometry; falls back to 'steepest' if not listed.
     unfoldStrategyByType: {
@@ -1845,24 +1844,6 @@ class PresentationApp {
             this.modeI.applyWorldSpin(this._spinAxisWorld, this._spinSpeed * fade * dt);
         }
 
-        // Map-ONLY sizing: scale the polyhedron faces (faceParent), never the
-        // camera — so the star sphere + backdrop stay fixed. Eases between the
-        // folded scale and the per-shape unfolded scale.
-        const foldedByType = this.config.foldedZoomByType;
-        const fz = (foldedByType && foldedByType[this._polyhedronType] != null)
-            ? foldedByType[this._polyhedronType] : this.config.foldedZoom;
-        const unfoldedByType = this.config.unfoldedZoomByType;
-        const uz = (unfoldedByType && unfoldedByType[this._polyhedronType] != null)
-            ? unfoldedByType[this._polyhedronType] : this.config.unfoldedZoom;
-        let scaleT = m.t;
-        if (m.targetT < 0.5 && this.config.foldScaleSettleT > 0) {
-            const settleT = Math.max(0, Math.min(0.95, this.config.foldScaleSettleT));
-            const u = Math.max(0, Math.min(1, (m.t - settleT) / (1 - settleT)));
-            scaleT = u * u * (3 - 2 * u);
-        }
-        const sizeFactor = fz + (uz - fz) * scaleT;
-        if (this.modeI.setPresentationScale) this.modeI.setPresentationScale(sizeFactor);
-
         // Drive the parallax cloud-lobe drift in the azure backdrop.
         if (this._backdrop && this._backdrop.updateOffsets) {
             this._backdrop.updateOffsets(performance.now() * 0.001);
@@ -1886,6 +1867,23 @@ class PresentationApp {
         this.modeI.update(this._starMap);
         this._applyViewTransition();
         this.modeI.setCameraPos(this.camera.position, this.camera);
+
+        // Map-ONLY sizing: scale the polyhedron faces (faceParent), never the
+        // camera. During folding, Mode I's fit scale rises as the net compacts;
+        // cap the requested scale so the effective rendered size cannot grow
+        // past the final folded size and then shrink back.
+        const foldedByType = this.config.foldedZoomByType;
+        const fz = (foldedByType && foldedByType[this._polyhedronType] != null)
+            ? foldedByType[this._polyhedronType] : this.config.foldedZoom;
+        const unfoldedByType = this.config.unfoldedZoomByType;
+        const uz = (unfoldedByType && unfoldedByType[this._polyhedronType] != null)
+            ? unfoldedByType[this._polyhedronType] : this.config.unfoldedZoom;
+        let sizeFactor = fz + (uz - fz) * m.t;
+        if (m.targetT < 0.5 && this.modeI.getFitScale) {
+            const fitScale = Math.max(1e-6, this.modeI.getFitScale());
+            sizeFactor = Math.min(sizeFactor, fz / fitScale);
+        }
+        if (this.modeI.setPresentationScale) this.modeI.setPresentationScale(sizeFactor);
 
         this.renderer.render(this.scene, this.camera);
     }

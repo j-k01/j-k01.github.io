@@ -8816,6 +8816,7 @@ export class ModeI {
             this._faceParent.position.set(0, 0, 0);
             this._faceParent.quaternion.identity();
             this._faceParent.updateMatrix();
+            this._fitScale = 1;
             return;
         }
         // Local-frame bbox (pre-rotation, pre-scale).
@@ -8868,6 +8869,7 @@ export class ModeI {
         const halfMax = Math.max((maxX - minX) * 0.5, (maxY - minY) * 0.5, (maxZ - minZ) * 0.5);
         const targetHalf = this.polyhedron.R;
         const sFit = (halfMax > 1e-6) ? Math.min(1, targetHalf / halfMax) : 1;
+        this._fitScale = sFit;
         const s = sFit * (this._presentationScale || 1);   // extra map-only size factor
         this._faceParent.scale.set(s, s, s);
 
@@ -8912,6 +8914,7 @@ export class ModeI {
         if (!this._cutEdgesEnabled && this._cutEdgeLines) this._cutEdgeLines.visible = false;
     }
     getFitMode() { return this._fitMode; }
+    getFitScale() { return this._fitScale || 1; }
 
     // Runtime tuning hook for the final in-plane twist applied at t = 1.
     // The override is keyed by the current `${type}:${strategy}` so each
