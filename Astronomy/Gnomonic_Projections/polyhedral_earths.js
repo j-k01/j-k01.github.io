@@ -69,7 +69,9 @@ const CONFIG = {
     unfoldFoldMode: 'wave',
     unfoldEasing:   'easeInOut',
     foldFoldMode:   'simultaneous',
-    foldEasing:     'fastSlowFast',
+    foldEasing:     'easeIn',           // original fold easing; t runs backward on fold
+    foldEndSnapStartT: 0.10,            // final closed-state slice gets a small speed kick
+    foldEndSnapSpeedBoost: 0.55,
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
     // that suits its geometry; falls back to 'steepest' if not listed.
     unfoldStrategyByType: {
@@ -1857,6 +1859,14 @@ class PresentationApp {
         // Drive the parallax cloud-lobe drift in the azure backdrop.
         if (this._backdrop && this._backdrop.updateOffsets) {
             this._backdrop.updateOffsets(performance.now() * 0.001);
+        }
+
+        if (m.targetT < 0.5 && m.t > 0 && m.t < this.config.foldEndSnapStartT) {
+            const snapT = 1 - (m.t / this.config.foldEndSnapStartT);
+            const snapEase = snapT * snapT * (3 - 2 * snapT);
+            m.speed = this.config.foldSpeed * (1 + this.config.foldEndSnapSpeedBoost * snapEase);
+        } else {
+            m.speed = this.config.foldSpeed;
         }
 
         // Push the live camera position + quaternion so Mode I's at-t=1
