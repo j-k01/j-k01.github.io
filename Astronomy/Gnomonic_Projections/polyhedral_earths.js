@@ -1924,19 +1924,6 @@ class PresentationApp {
 
         const m = this.modeI;
 
-        // Auto-spin the closed globe about the screen-fixed tilted axis. The
-        // spin fades IN as the earth folds up (t: 1 net → 0 globe) and reaches
-        // full speed before the final snap lands; it's off the moment an unfold
-        // begins (targetT ≥ 0.5) so the unfold-orientation drive below can take over.
-        // Premultiplying _userRotation keeps the axis fixed on screen.
-        const spinFullAtT = Math.max(0, Math.min(0.95, this.config.foldSpinFullAtT || 0));
-        const foldedFrac = Math.min(1, (1 - m.t) / Math.max(1e-6, 1 - spinFullAtT));
-        if (this._spinSpeed && !this._autoSpinPaused
-            && m.targetT < 0.5 && foldedFrac > 1e-3) {
-            const fade = foldedFrac * foldedFrac * (3 - 2 * foldedFrac);  // smoothstep ease
-            this.modeI.applyWorldSpin(this._spinAxisWorld, this._spinSpeed * fade * dt);
-        }
-
         // Drive the parallax cloud-lobe drift in the azure backdrop.
         if (this._backdrop && this._backdrop.updateOffsets) {
             this._backdrop.updateOffsets(performance.now() * 0.001);
@@ -1960,6 +1947,28 @@ class PresentationApp {
         this.modeI.update(this._starMap);
         this._applyViewTransition();
         this.modeI.setCameraPos(this.camera.position, this.camera);
+
+        // Auto-spin the closed globe about the screen-fixed tilted axis. This
+        // must happen AFTER _applyViewTransition(), since that transition
+        // writes userRotation while folding. Placing the spin here makes the
+        // final close already rotate at the normal speed instead of waiting for
+        // the saved folded view to finish applying.
+        const spinFullAtT = Math.max(0, Math.min(0.95, this.config.foldSpinFullAtT || 0));
+        const foldedFrac = Math.min(1, (1 - m.t) / Math.max(1e-6, 1 - spinFullAtT));
+        if (this._spinSpeed && !this._autoSpinPaused
+            && m.targetT < 0.5 && foldedFrac > 1e-3) {
+            const fade = foldedFrac * foldedFrac * (3 - 2 * foldedFrac);  // smoothstep ease
+            const spinAngle = this._spinSpeed * fade * dt;
+            const tr = this._viewTransition;
+            if (tr && tr.targetT < 0.5 && tr.to && tr.to.userRotation) {
+                if (!this._autoSpinTransitionQuat) {
+                    this._autoSpinTransitionQuat = new THREE.Quaternion();
+                }
+                this._autoSpinTransitionQuat.setFromAxisAngle(this._spinAxisWorld, spinAngle);
+                tr.to.userRotation.premultiply(this._autoSpinTransitionQuat).normalize();
+            }
+            this.modeI.applyWorldSpin(this._spinAxisWorld, spinAngle);
+        }
 
         // Map-ONLY sizing: scale the polyhedron faces (faceParent), never the
         // camera. During folding, Mode I's fit scale rises as the net compacts;
