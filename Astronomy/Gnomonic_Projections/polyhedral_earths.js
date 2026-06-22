@@ -72,6 +72,7 @@ const CONFIG = {
     foldEasing:     'easeIn',           // original fold easing; t runs backward on fold
     foldEndSnapStartT: 0.10,            // final closed-state slice gets a small speed kick
     foldEndSnapSpeedBoost: 0.55,
+    foldScaleSettleT: 0.14,             // reach final folded scale before the last hinge snap
     // Per-polyhedron unfold strategy. Each shape gets a different cut layout
     // that suits its geometry; falls back to 'steepest' if not listed.
     unfoldStrategyByType: {
@@ -1853,7 +1854,13 @@ class PresentationApp {
         const unfoldedByType = this.config.unfoldedZoomByType;
         const uz = (unfoldedByType && unfoldedByType[this._polyhedronType] != null)
             ? unfoldedByType[this._polyhedronType] : this.config.unfoldedZoom;
-        const sizeFactor = fz + (uz - fz) * m.t;
+        let scaleT = m.t;
+        if (m.targetT < 0.5 && this.config.foldScaleSettleT > 0) {
+            const settleT = Math.max(0, Math.min(0.95, this.config.foldScaleSettleT));
+            const u = Math.max(0, Math.min(1, (m.t - settleT) / (1 - settleT)));
+            scaleT = u * u * (3 - 2 * u);
+        }
+        const sizeFactor = fz + (uz - fz) * scaleT;
         if (this.modeI.setPresentationScale) this.modeI.setPresentationScale(sizeFactor);
 
         // Drive the parallax cloud-lobe drift in the azure backdrop.
