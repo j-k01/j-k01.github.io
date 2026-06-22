@@ -1033,6 +1033,7 @@ class PresentationApp {
         this._lastUserActivityMs = 0;
         this._viewStates = { folded: null, unfolded: null };
         this._viewTransition = null;
+        this._autoSpinPaused = false;
 
         this._setupRenderer();
         this._setupScene();
@@ -1072,6 +1073,9 @@ class PresentationApp {
         const canvas = this.renderer.domElement;
         canvas.style.touchAction = 'none';
         const TAP_SLOP = 6;            // px of travel under which it counts as a tap
+        const TWO_FINGER_TAP_SLOP = 10;
+        const TWO_FINGER_TAP_MAX_MS = 520;
+        const TWO_FINGER_TAP_ANGLE_SLOP = 0.12;
         const PINCH_SETTLE_MS = 90;    // ignore unstable first pinch samples
         const POST_TAP_ZOOM_LOCK_MS = 180;
         const PINCH_ZOOM_MAX_LOG_STEP = 0.035;
@@ -1084,6 +1088,7 @@ class PresentationApp {
         let pinchStartMs = 0;
         let pinchZoomSamples = 0;
         let lastTapMs = -Infinity;
+        let twoFingerTap = null;
 
         const nowMs = () => (typeof performance !== 'undefined')
             ? performance.now()
@@ -1125,9 +1130,20 @@ class PresentationApp {
             dragging = false;
             activePointerId = null;
             captureActiveTouches();
+            for (const touch of activeTouches.values()) {
+                touch.startX = touch.x;
+                touch.startY = touch.y;
+            }
             lastTouchPair = touchPair();
             pinchStartMs = nowMs();
             pinchZoomSamples = 0;
+            twoFingerTap = lastTouchPair ? {
+                startMs: pinchStartMs,
+                x: lastTouchPair.x,
+                y: lastTouchPair.y,
+                dist: lastTouchPair.dist,
+                angle: lastTouchPair.angle,
+            } : null;
         };
 
         const applyPinchZoom = (ratio) => {
@@ -1181,6 +1197,42 @@ class PresentationApp {
 
         const normalizedAngleDelta = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
+        const updateTwoFingerTapCandidate = (pair) => {
+            if (!twoFingerTap || !pair) return;
+            if (nowMs() - twoFingerTap.startMs > TWO_FINGER_TAP_MAX_MS) {
+                twoFingerTap = null;
+                return;
+            }
+            let pointTravel = 0;
+            for (const touch of activeTouches.values()) {
+                pointTravel = Math.max(
+                    pointTravel,
+                    Math.hypot(touch.x - touch.startX, touch.y - touch.startY),
+                );
+            }
+            const centerTravel = Math.hypot(pair.x - twoFingerTap.x, pair.y - twoFingerTap.y);
+            const distTravel = Math.abs(pair.dist - twoFingerTap.dist);
+            const angleTravel = Math.abs(normalizedAngleDelta(pair.angle, twoFingerTap.angle));
+            if (pointTravel > TWO_FINGER_TAP_SLOP
+                || centerTravel > TWO_FINGER_TAP_SLOP
+                || distTravel > TWO_FINGER_TAP_SLOP
+                || angleTravel > TWO_FINGER_TAP_ANGLE_SLOP) {
+                twoFingerTap = null;
+            }
+        };
+
+        const finishTwoFingerTapIfReady = () => {
+            if (!twoFingerTap || activeTouches.size !== 0) return false;
+            const elapsed = nowMs() - twoFingerTap.startMs;
+            const shouldToggle = elapsed <= TWO_FINGER_TAP_MAX_MS
+                && this._canToggleAutoSpinFromTouch();
+            twoFingerTap = null;
+            if (!shouldToggle) return false;
+            lastTapMs = nowMs();
+            this.toggleAutoSpinPaused();
+            return true;
+        };
+
         const applyPinchTwist = (deltaAngle) => {
             if (!Number.isFinite(deltaAngle) || Math.abs(deltaAngle) < 1e-4
                 || !this.camera || !this.modeI || !this.modeI.applyWorldSpin) return;
@@ -1195,6 +1247,7 @@ class PresentationApp {
                 lastTouchPair = null;
                 return;
             }
+            updateTwoFingerTapCandidate(pair);
             if (lastTouchPair) {
                 applyPinchPan(pair.x - lastTouchPair.x, pair.y - lastTouchPair.y);
                 if (lastTouchPair.dist > 1e-3) applyPinchZoom(pair.dist / lastTouchPair.dist);
@@ -1209,9 +1262,21 @@ class PresentationApp {
             markUserActivity();
             if (e.button !== 0) return;
             if (e.pointerType === 'touch') {
-                activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-                if (activeTouches.size > 1) {
+                activeTouches.set(e.pointerId, {
+                    x: e.clientX,
+                    y: e.clientY,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                });
+                if (activeTouches.size === 2) {
                     beginTwoFingerGesture();
+                    return;
+                } else if (activeTouches.size > 2) {
+                    twoFingerTap = null;
+                    suppressTap = true;
+                    dragging = false;
+                    activePointerId = null;
+                    captureActiveTouches();
                     return;
                 }
             }
@@ -1226,7 +1291,9 @@ class PresentationApp {
             markUserActivity();
             if (e.pointerType === 'touch') {
                 if (!activeTouches.has(e.pointerId)) return;
-                activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                const touch = activeTouches.get(e.pointerId);
+                touch.x = e.clientX;
+                touch.y = e.clientY;
                 if (activeTouches.size > 1) {
                     updateTwoFingerGesture();
                     return;
@@ -1242,10 +1309,21 @@ class PresentationApp {
         });
         canvas.addEventListener('pointerup', (e) => {
             markUserActivity();
-            if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
+            if (e.pointerType === 'touch') {
+                const touch = activeTouches.get(e.pointerId);
+                if (touch) {
+                    touch.x = e.clientX;
+                    touch.y = e.clientY;
+                    if (activeTouches.size === 2) updateTwoFingerTapCandidate(touchPair());
+                }
+                activeTouches.delete(e.pointerId);
+            }
             if (activeTouches.size < 2) lastTouchPair = null;
             if (!dragging || e.pointerId !== activePointerId) {
-                if (activeTouches.size === 0) suppressTap = false;
+                if (activeTouches.size === 0) {
+                    finishTwoFingerTapIfReady();
+                    suppressTap = false;
+                }
                 releasePointer(e.pointerId);
                 return;
             }
@@ -1263,6 +1341,7 @@ class PresentationApp {
             markUserActivity();
             if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
             if (activeTouches.size < 2) lastTouchPair = null;
+            twoFingerTap = null;
             if (e.pointerId === activePointerId || activeTouches.size === 0) {
                 dragging = false;
                 activePointerId = null;
@@ -1718,6 +1797,17 @@ class PresentationApp {
         if (this.isUnfolded()) this.fold(); else this.unfold();
     }
 
+    _canToggleAutoSpinFromTouch() {
+        if (!this.modeI || this.modeI.targetT >= 0.5) return false;
+        const closedWindow = Math.max(0.04, this.config.foldEndSnapStartT || 0);
+        return this.modeI.t <= closedWindow;
+    }
+
+    toggleAutoSpinPaused() {
+        this._autoSpinPaused = !this._autoSpinPaused;
+        return this._autoSpinPaused;
+    }
+
     // Direct scrub — set the unfold position immediately, no animation.
     // Pinning both t AND targetT to the same value keeps update()'s
     // `if (t !== targetT)` step from animating the polyhedron away
@@ -1841,7 +1931,8 @@ class PresentationApp {
         // Premultiplying _userRotation keeps the axis fixed on screen.
         const spinFullAtT = Math.max(0, Math.min(0.95, this.config.foldSpinFullAtT || 0));
         const foldedFrac = Math.min(1, (1 - m.t) / Math.max(1e-6, 1 - spinFullAtT));
-        if (this._spinSpeed && m.targetT < 0.5 && foldedFrac > 1e-3) {
+        if (this._spinSpeed && !this._autoSpinPaused
+            && m.targetT < 0.5 && foldedFrac > 1e-3) {
             const fade = foldedFrac * foldedFrac * (3 - 2 * foldedFrac);  // smoothstep ease
             this.modeI.applyWorldSpin(this._spinAxisWorld, this._spinSpeed * fade * dt);
         }
